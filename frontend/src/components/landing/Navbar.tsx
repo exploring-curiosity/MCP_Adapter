@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Menu, X, ArrowUpRight } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NexusLogo } from "./NexusLogo";
 import { BillingButton } from "@/components/BillingButton";
+import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 
 const NAV_LINKS = [
-  { label: "Platform", href: "#platform" },
   { label: "Services", href: "#services" },
   { label: "Pipeline", href: "#pipeline" },
   { label: "Features", href: "#features" },
@@ -40,15 +40,12 @@ export function Navbar() {
 
         <div className="hidden md:flex items-center gap-3">
           <BillingButton />
+          <ThemeSwitcher />
           <Link href="/adapter/ingest">
             <Button variant="outline" size="sm" className="rounded-full text-sm px-5 glass border-border/50 hover:border-primary/40">
               Try Generator
             </Button>
           </Link>
-          <Button size="sm" className="btn-gradient rounded-full text-sm px-5 relative z-10">
-            <span>Get Started</span>
-            <ArrowUpRight className="w-3.5 h-3.5 ml-1" />
-          </Button>
         </div>
 
         <button className="md:hidden text-foreground" onClick={() => setOpen(!open)}>
@@ -67,9 +64,6 @@ export function Navbar() {
             <Link href="/adapter/ingest" onClick={() => setOpen(false)}>
               <Button variant="outline" size="sm" className="rounded-full text-sm">Try Generator</Button>
             </Link>
-            <Button size="sm" className="btn-gradient rounded-full text-sm relative z-10">
-              <span>Get Started</span>
-            </Button>
           </div>
         </div>
       )}

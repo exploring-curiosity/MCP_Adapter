@@ -18,7 +18,7 @@ export default function BillingDebugPage() {
 
     if (!loaded) {
         return (
-            <div className="min-h-screen bg-gray-900 text-white p-8">
+            <div className="min-h-screen bg-background text-foreground p-8">
                 <h1 className="text-2xl font-bold mb-4">FlowGlad Debug</h1>
                 <p>Loading...</p>
             </div>
@@ -29,7 +29,7 @@ export default function BillingDebugPage() {
     const allPrices = products.flatMap(p => p.prices || [])
 
     return (
-        <div className="min-h-screen bg-gray-900 text-white p-8">
+        <div className="min-h-screen bg-background text-foreground p-8">
             <h1 className="text-2xl font-bold mb-6">FlowGlad Configuration Debug</h1>
 
             {/* Errors */}
@@ -45,10 +45,10 @@ export default function BillingDebugPage() {
             )}
 
             {/* Customer Info */}
-            <div className="mb-6 p-4 bg-gray-800 rounded-lg">
-                <h2 className="text-lg font-semibold text-blue-400 mb-2">Customer</h2>
+            <div className="mb-6 p-4 bg-card rounded-lg border border-border">
+                <h2 className="text-lg font-semibold text-info mb-2">Customer</h2>
                 {customer ? (
-                    <pre className="text-sm text-gray-300 overflow-auto">
+                    <pre className="text-sm text-muted-foreground overflow-auto">
                         {JSON.stringify(customer, null, 2)}
                     </pre>
                 ) : (
@@ -57,29 +57,29 @@ export default function BillingDebugPage() {
             </div>
 
             {/* Subscription */}
-            <div className="mb-6 p-4 bg-gray-800 rounded-lg">
-                <h2 className="text-lg font-semibold text-green-400 mb-2">Current Subscription</h2>
+            <div className="mb-6 p-4 bg-card rounded-lg border border-border">
+                <h2 className="text-lg font-semibold text-success mb-2">Current Subscription</h2>
                 {currentSubscription ? (
-                    <pre className="text-sm text-gray-300 overflow-auto">
+                    <pre className="text-sm text-muted-foreground overflow-auto">
                         {JSON.stringify(currentSubscription, null, 2)}
                     </pre>
                 ) : (
-                    <p className="text-gray-400">No active subscription</p>
+                    <p className="text-muted-foreground">No active subscription</p>
                 )}
             </div>
 
             {/* Products & Prices */}
-            <div className="mb-6 p-4 bg-gray-800 rounded-lg">
+            <div className="mb-6 p-4 bg-card rounded-lg border border-border">
                 <h2 className="text-lg font-semibold text-purple-400 mb-2">Products & Prices</h2>
                 {products.length > 0 ? (
                     <div className="space-y-4">
                         {products.map((product: any) => (
-                            <div key={product.id || product.slug} className="border border-gray-700 rounded p-3">
-                                <h3 className="font-medium text-white">{product.name}</h3>
-                                <p className="text-sm text-gray-400">Slug: <code className="text-purple-300">{product.slug}</code></p>
-                                <p className="text-sm text-gray-400">{product.description}</p>
+                            <div key={product.id || product.slug} className="border border-border rounded p-3">
+                                <h3 className="font-medium text-foreground">{product.name}</h3>
+                                <p className="text-sm text-muted-foreground">Slug: <code className="text-purple-400">{product.slug}</code></p>
+                                <p className="text-sm text-muted-foreground">{product.description}</p>
                                 <div className="mt-2">
-                                    <p className="text-sm font-medium text-gray-300">Prices:</p>
+                                    <p className="text-sm font-medium text-secondary-foreground">Prices:</p>
                                     {product.prices?.length > 0 ? (
                                         <ul className="list-disc list-inside text-sm">
                                             {product.prices.map((price: any) => (
@@ -98,7 +98,7 @@ export default function BillingDebugPage() {
                 ) : (
                     <div className="text-center py-8">
                         <p className="text-xl text-yellow-400 mb-2">⚠️ No Products Configured</p>
-                        <p className="text-gray-400 mb-4">
+                        <p className="text-muted-foreground mb-4">
                             You need to create products and prices in your FlowGlad dashboard.
                         </p>
                         <a
@@ -114,16 +114,16 @@ export default function BillingDebugPage() {
             </div>
 
             {/* Available Price Slugs for BillingButton */}
-            <div className="mb-6 p-4 bg-gray-800 rounded-lg">
+            <div className="mb-6 p-4 bg-card rounded-lg border border-border">
                 <h2 className="text-lg font-semibold text-orange-400 mb-2">Available Price Slugs</h2>
                 {allPrices.length > 0 ? (
                     <div>
-                        <p className="text-sm text-gray-400 mb-2">Use one of these slugs in your BillingButton:</p>
+                        <p className="text-sm text-muted-foreground mb-2">Use one of these slugs in your BillingButton:</p>
                         <div className="flex flex-wrap gap-2">
                             {allPrices.map((price: any) => (
                                 <code
                                     key={price.slug}
-                                    className="px-2 py-1 bg-gray-700 text-orange-300 rounded text-sm"
+                                    className="px-2 py-1 bg-muted text-orange-400 rounded text-sm"
                                 >
                                     {price.slug}
                                 </code>
@@ -138,11 +138,11 @@ export default function BillingDebugPage() {
             </div>
 
             {/* Raw Pricing Model */}
-            <details className="p-4 bg-gray-800 rounded-lg">
-                <summary className="cursor-pointer text-lg font-semibold text-gray-400">
+            <details className="p-4 bg-card rounded-lg border border-border">
+                <summary className="cursor-pointer text-lg font-semibold text-muted-foreground">
                     Raw Pricing Model JSON
                 </summary>
-                <pre className="mt-2 text-xs text-gray-500 overflow-auto max-h-96">
+                <pre className="mt-2 text-xs text-muted-foreground/70 overflow-auto max-h-96">
                     {JSON.stringify(pricingModel, null, 2)}
                 </pre>
             </details>

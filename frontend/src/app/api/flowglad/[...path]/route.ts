@@ -1,5 +1,6 @@
 import { nextRouteHandler } from '@flowglad/nextjs/server'
 import { flowglad } from '@/lib/flowglad'
+import { NextRequest, NextResponse } from 'next/server'
 
 /**
  * FlowGlad API route handler.
@@ -7,16 +8,33 @@ import { flowglad } from '@/lib/flowglad'
  * This catches all requests to /api/flowglad/* and delegates them to FlowGlad.
  * The getCustomerExternalId function extracts the user ID from the request.
  */
-export const { GET, POST } = nextRouteHandler({
+const handlers = nextRouteHandler({
     flowglad,
-    getCustomerExternalId: async (req) => {
-        // TODO: Extract the real user ID from your auth/session system
-        // Examples:
-        //   - Next-Auth: const session = await getServerSession(); return session?.user?.id
-        //   - Clerk: const { userId } = auth(); return userId
-        //   - Custom JWT: const token = req.headers.get('authorization'); return decodeToken(token).userId
-
-        // For now, use a default user ID for testing
-        return 'default-user-id'
+    getCustomerExternalId: async () => {
+        return 'sudharshan'
+    },
+    onError: (error) => {
+        console.error('[Flowglad Route] Error:', error)
     },
 })
+
+export async function GET(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
+    const { path } = await ctx.params
+    console.log('[Flowglad GET]', path.join('/'))
+    return handlers.GET(req, ctx)
+}
+
+export async function POST(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
+    const { path } = await ctx.params
+    console.log('[Flowglad POST]', path.join('/'))
+    const res = await handlers.POST(req, ctx) as NextResponse
+    // Log response for checkout debugging
+    if (path.includes('checkout-sessions')) {
+        try {
+            const clone = res.clone()
+            const body = await clone.json()
+            console.log('[Flowglad POST] checkout response:', JSON.stringify(body).slice(0, 500))
+        } catch { /* ignore */ }
+    }
+    return res
+}

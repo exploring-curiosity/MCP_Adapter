@@ -52,6 +52,27 @@ _SESSION_DIR = Path(__file__).parent / ".sessions"
 _SESSION_DIR.mkdir(exist_ok=True)
 OUTPUT_ROOT = Path(__file__).parent / "output"
 
+# ── Credit store (JSON file per user) ─────────────────────────────────────
+
+_CREDITS_DIR = Path(__file__).parent / ".credits"
+_CREDITS_DIR.mkdir(exist_ok=True)
+CREDIT_COST_PER_TOOL = 1  # credits charged per tool generated
+CREDIT_PACK_SIZE = 100    # credits per purchase
+CREDIT_PACK_PRICE = 1000  # $10.00 in cents
+
+
+def _get_credits(user: str) -> dict:
+    """Load credit balance for a user."""
+    p = _CREDITS_DIR / f"{user}.json"
+    if p.exists():
+        return json.loads(p.read_text())
+    return {"user": user, "balance": 0, "total_purchased": 0, "total_spent": 0, "transactions": []}
+
+
+def _save_credits(user: str, data: dict) -> None:
+    """Persist credit data for a user."""
+    (_CREDITS_DIR / f"{user}.json").write_text(json.dumps(data, indent=2))
+
 
 def _save_session(session_id: str, data: dict[str, Any]) -> None:
     """Persist session to disk."""
@@ -92,6 +113,11 @@ class DiscoverRequest(BaseModel):
 class DiscoverConfirmRequest(BaseModel):
     session_id: str
     allowed_tools: list[str]  # tool names to carry forward
+
+class CreditPurchaseRequest(BaseModel):
+    user: str
+    credits: int = 100  # default pack size
+    payment_id: str | None = None  # Flowglad payment/checkout ID
 
 
 # ── Raw tool → canonical model converters ─────────────────────────────────
@@ -466,7 +492,7 @@ async def api_policy(req: PolicyUpdate):
 
 @app.post("/api/generate")
 async def api_generate(req: GenerateRequest):
-    """Stage 5: Generate the MCP server code."""
+    """Stage 5: Generate the MCP server code (costs credits)."""
     sess = _load_session(req.session_id)
     if not sess:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -475,12 +501,34 @@ async def api_generate(req: GenerateRequest):
     tools = sess["tools"]
     name = req.server_name or None
 
+    # Credit check: 1 credit per tool
+    user = sess.get("user", "sudharshan")
+    cost = len(tools) * CREDIT_COST_PER_TOOL
+    cred = _get_credits(user)
+    if cred["balance"] < cost:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Insufficient credits. Need {cost} credits ({len(tools)} tools × {CREDIT_COST_PER_TOOL}), have {cred['balance']}. Purchase more credits."
+        )
+
     output_dir = OUTPUT_ROOT / (name or api_spec.title.lower().replace(" ", "-") + "-mcp")
 
     try:
         result = agentic_generate(api_spec, tools, server_name=name, output_dir=str(output_dir))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Code generation failed: {e}")
+
+    # Deduct credits after successful generation
+    cred = _get_credits(user)  # re-read in case of concurrent changes
+    cred["balance"] -= cost
+    cred["total_spent"] += cost
+    cred["transactions"].append({
+        "type": "deduct",
+        "amount": cost,
+        "reason": f"Generated {len(tools)} tools for {api_spec.title}",
+        "session_id": req.session_id,
+    })
+    _save_credits(user, cred)
 
     sess["generated"] = result
     sess["output_dir"] = str(output_dir)
@@ -566,6 +614,52 @@ async def api_deploy(req: DeployRequest):
         raise HTTPException(status_code=500, detail=f"Deploy failed: {e}")
 
     return deploy_info
+
+
+# ── Credit endpoints ──────────────────────────────────────────────────────
+
+@app.get("/api/credits/pricing")
+async def api_credits_pricing():
+    """Return pricing info for the credit system."""
+    return {
+        "pack_size": CREDIT_PACK_SIZE,
+        "pack_price_cents": CREDIT_PACK_PRICE,
+        "pack_price_display": f"${CREDIT_PACK_PRICE / 100:.2f}",
+        "cost_per_tool": CREDIT_COST_PER_TOOL,
+    }
+
+
+@app.get("/api/credits/{user}")
+async def api_get_credits(user: str):
+    """Get credit balance for a user."""
+    cred = _get_credits(user)
+    return {
+        "user": cred["user"],
+        "balance": cred["balance"],
+        "total_purchased": cred["total_purchased"],
+        "total_spent": cred["total_spent"],
+        "cost_per_tool": CREDIT_COST_PER_TOOL,
+    }
+
+
+@app.post("/api/credits/purchase")
+async def api_purchase_credits(req: CreditPurchaseRequest):
+    """Add credits after a successful payment (Flowglad checkout or test purchase)."""
+    cred = _get_credits(req.user)
+    cred["balance"] += req.credits
+    cred["total_purchased"] += req.credits
+    cred["transactions"].append({
+        "type": "purchase",
+        "amount": req.credits,
+        "payment_id": req.payment_id,
+        "reason": f"Purchased {req.credits} credits",
+    })
+    _save_credits(req.user, cred)
+    return {
+        "user": req.user,
+        "credits_added": req.credits,
+        "balance": cred["balance"],
+    }
 
 
 def _detect_lang(filename: str) -> str:

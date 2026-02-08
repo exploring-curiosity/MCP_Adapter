@@ -10,14 +10,16 @@ export const flowglad = (customerExternalId: string) => {
     return new FlowgladServer({
         customerExternalId,
         getCustomerDetails: async (customerExternalId) => {
-            // TODO: Replace with actual user lookup from your auth/database
-            // For example, if using Next-Auth:
-            //   const user = await prisma.user.findUnique({ where: { id: customerExternalId } })
-            //   return { email: user.email, name: user.name }
-
+            // User lookup — for now single-user system
+            if (customerExternalId === 'sudharshan') {
+                return {
+                    email: 'sudharshan@exploringcuriosity.com',
+                    name: 'Sudharshan',
+                }
+            }
             return {
-                email: `user-${customerExternalId}@example.com`,
-                name: `User ${customerExternalId}`,
+                email: `${customerExternalId}@dedalus.local`,
+                name: customerExternalId,
             }
         },
     })

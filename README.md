@@ -321,6 +321,49 @@ Controls: `--block-destructive`, `--allowlist`, `--denylist`, `--max-tools`
 
 ---
 
+## Credit System
+
+The MCP Maker uses a credit-based system. Each API tool generated into an MCP server costs **1 credit**. Credits can be purchased at **100 credits for $10.00**.
+
+### Check your balance
+
+```bash
+curl http://127.0.0.1:8080/api/credits/sudharshan
+```
+
+### Add credits manually (test mode)
+
+To add credits directly via the backend API (no payment required in test mode):
+
+```bash
+# Add 100 credits
+curl -X POST http://127.0.0.1:8080/api/credits/purchase \
+  -H "Content-Type: application/json" \
+  -d '{"user": "sudharshan", "credits": 100}'
+
+# Add a custom amount (e.g. 500 credits)
+curl -X POST http://127.0.0.1:8080/api/credits/purchase \
+  -H "Content-Type: application/json" \
+  -d '{"user": "sudharshan", "credits": 500}'
+```
+
+You can also click the **Buy** button in the sidebar or on the Generate page — in test mode, credits are added instantly without payment.
+
+### Pricing info
+
+```bash
+curl http://127.0.0.1:8080/api/credits/pricing
+```
+
+### How credits are charged
+
+- **1 credit per tool** generated during the Generate step
+- Credits are checked **before** generation starts (HTTP 402 if insufficient)
+- Credits are deducted **after** successful generation
+- Credit data is stored in `.credits/sudharshan.json`
+
+---
+
 ## Project Structure
 
 ```

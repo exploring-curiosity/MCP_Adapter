@@ -5,13 +5,20 @@ import { useRouter } from "next/navigation";
 import { StepHeader } from "@/components/adapter/StepHeader";
 import { Button } from "@/components/ui/button";
 import { usePipeline } from "@/lib/pipeline-context";
-import { ArrowRight, ArrowLeft, FileCode2, Folder, File, Loader2, Check, AlertCircle } from "lucide-react";
+import { ArrowRight, ArrowLeft, FileCode2, Folder, File, Loader2, Check, AlertCircle, Coins, Plus } from "lucide-react";
+import { useCredits } from "@/lib/use-credits";
 import { cn } from "@/lib/utils";
 
 export default function GeneratePage() {
   const router = useRouter();
   const { generated, runGenerate, loading, error, tools, spec } = usePipeline();
+  const { balance, fetchBalance } = useCredits();
   const [selectedFile, setSelectedFile] = useState("server.py");
+  const [buyLoading, setBuyLoading] = useState(false);
+
+  const cost = tools.length * 1; // 1 credit per tool
+  const canAfford = balance >= cost;
+
 
   if (!tools.length) {
     return (
@@ -28,6 +35,33 @@ export default function GeneratePage() {
 
   const handleGenerate = async () => {
     await runGenerate();
+    await fetchBalance(); // refresh after deduction
+  };
+
+  const handleBuyCredits = async () => {
+    setBuyLoading(true);
+    try {
+      const res = await fetch('/api/flowglad/checkout-sessions/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          priceSlug: '100_crdts',
+          successUrl: `${window.location.origin}/credits/success`,
+          cancelUrl: window.location.href,
+          type: 'product',
+        }),
+      });
+      const json = await res.json();
+      if (json.data?.url) {
+        window.location.href = json.data.url;
+      } else {
+        console.error('Checkout failed:', json);
+      }
+    } catch (err) {
+      console.error('Checkout error:', err);
+    } finally {
+      setBuyLoading(false);
+    }
   };
 
   const files = generated?.files || {};
@@ -55,6 +89,16 @@ export default function GeneratePage() {
                 The LLM will generate a complete MCP server with {tools.length} tools, policy enforcement, and test suite
                 {spec ? ` for ${spec.title}` : ""}.
               </p>
+              <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <Coins className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-xs text-foreground">
+                  Cost: <strong>{cost} credits</strong> ({tools.length} tools × 1)
+                </span>
+                <span className="text-xs text-muted-foreground">•</span>
+                <span className={`text-xs font-bold ${canAfford ? 'text-emerald-400' : 'text-red-400'}`}>
+                  Balance: {balance}
+                </span>
+              </div>
             </div>
             {error && (
               <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive max-w-md">
@@ -62,13 +106,30 @@ export default function GeneratePage() {
                 {error}
               </div>
             )}
-            <Button onClick={handleGenerate} disabled={loading} className="btn-gradient rounded-full px-8 h-12 relative z-10">
-              {loading ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Generating with DeepSeek-V3...</>
-              ) : (
-                <><FileCode2 className="w-4 h-4" /> Generate Server Code</>
-              )}
-            </Button>
+            {!canAfford ? (
+              <div className="flex flex-col items-center gap-2">
+                <p className="text-xs text-red-400">Insufficient credits. Need {cost}, have {balance}.</p>
+                <Button
+                  onClick={handleBuyCredits}
+                  disabled={buyLoading}
+                  className="rounded-full px-6 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
+                >
+                  {buyLoading ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Redirecting to checkout...</>
+                  ) : (
+                    <><Plus className="w-4 h-4" /> Buy 100 Credits — $10.00</>
+                  )}
+                </Button>
+              </div>
+            ) : (
+              <Button onClick={handleGenerate} disabled={loading} className="btn-gradient rounded-full px-8 h-12 relative z-10">
+                {loading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Generating with DeepSeek-V3...</>
+                ) : (
+                  <><FileCode2 className="w-4 h-4" /> Generate Server Code ({cost} credits)</>
+                )}
+              </Button>
+            )}
           </div>
           <div className="flex items-center justify-start">
             <Button variant="ghost" onClick={() => router.push("/adapter/policy")} className="text-muted-foreground">

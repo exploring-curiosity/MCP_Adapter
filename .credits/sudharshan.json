@@ -1,0 +1,50 @@
+{
+  "user": "sudharshan",
+  "balance": 263,
+  "total_purchased": 300,
+  "total_spent": 37,
+  "transactions": [
+    {
+      "type": "purchase",
+      "amount": 100,
+      "payment_id": "test_001",
+      "reason": "Purchased 100 credits"
+    },
+    {
+      "type": "deduct",
+      "amount": 16,
+      "reason": "Generated 16 tools for Swagger Petstore",
+      "session_id": "4300215a"
+    },
+    {
+      "type": "deduct",
+      "amount": 11,
+      "reason": "Generated 11 tools for Swagger Petstore",
+      "session_id": "bde8ca5f"
+    },
+    {
+      "type": "deduct",
+      "amount": 5,
+      "reason": "Generated 5 tools for Basic Math API",
+      "session_id": "59ee9d6a"
+    },
+    {
+      "type": "deduct",
+      "amount": 5,
+      "reason": "Generated 5 tools for Swagger Petstore",
+      "session_id": "06b1fd6b"
+    },
+    {
+      "type": "purchase",
+      "amount": 100,
+      "payment_id": "flowglad_1770558752001",
+      "reason": "Purchased 100 credits"
+    },
+    {
+      "type": "purchase",
+      "amount": 100,
+      "payment_id": "flowglad_1770558831354",
+      "reason": "Purchased 100 credits"
+    }
+  ]
+}

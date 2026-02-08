@@ -4,10 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { NexusLogo } from "@/components/landing/NexusLogo";
+import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import {
   FileJson, Search, Layers, Shield, Code2, TestTube, Rocket,
-  LayoutDashboard, FileText,
+  LayoutDashboard, FileText, Coins,
 } from "lucide-react";
+import { useCredits } from "@/lib/use-credits";
 
 const STEPS = [
   { key: "ingest", label: "Ingest", sub: "Parse & index", icon: FileJson, href: "/adapter/ingest", num: 1 },
@@ -18,6 +20,20 @@ const STEPS = [
   { key: "test", label: "Test", sub: "Contract tests", icon: TestTube, href: "/adapter/test", num: 6 },
   { key: "deploy", label: "Deploy", sub: "Ship to production", icon: Rocket, href: "/adapter/deploy", num: 7 },
 ];
+
+function CreditsBadge() {
+  const { balance } = useCredits();
+
+  return (
+    <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/15">
+      <Coins className="w-4 h-4 text-amber-400" />
+      <div>
+        <p className="text-xs font-bold text-foreground leading-tight">{balance}</p>
+        <p className="text-[9px] text-muted-foreground">credits</p>
+      </div>
+    </div>
+  );
+}
 
 export function AdapterSidebar() {
   const pathname = usePathname();
@@ -84,10 +100,14 @@ export function AdapterSidebar() {
       </nav>
 
       <div className="px-4 py-4 border-t border-border/30 space-y-3">
-        <Link href="#" className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
-          <FileText className="w-3.5 h-3.5" />
-          Docs
-        </Link>
+        <CreditsBadge />
+        <div className="flex items-center justify-between">
+          <Link href="#" className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <FileText className="w-3.5 h-3.5" />
+            Docs
+          </Link>
+          <ThemeSwitcher />
+        </div>
         <div className="flex items-center gap-2.5 pt-2">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-xs font-bold text-primary-foreground shrink-0">
             SR
