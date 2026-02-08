@@ -1,8 +1,8 @@
 {
   "user": "sudharshan",
-  "balance": 263,
-  "total_purchased": 300,
-  "total_spent": 37,
+  "balance": 446,
+  "total_purchased": 500,
+  "total_spent": 54,
   "transactions": [
     {
       "type": "purchase",
@@ -45,6 +45,42 @@
       "amount": 100,
       "payment_id": "flowglad_1770558831354",
       "reason": "Purchased 100 credits"
+    },
+    {
+      "type": "deduct",
+      "amount": 4,
+      "reason": "Generated 4 tools for Swagger Petstore",
+      "session_id": "0f01c6b5"
+    },
+    {
+      "type": "deduct",
+      "amount": 5,
+      "reason": "Generated 5 tools for Swagger Petstore",
+      "session_id": "31f7aa5f"
+    },
+    {
+      "type": "purchase",
+      "amount": 100,
+      "payment_id": "flowglad_1770562456120",
+      "reason": "Purchased 100 credits"
+    },
+    {
+      "type": "deduct",
+      "amount": 4,
+      "reason": "Generated 4 tools for Swagger Petstore",
+      "session_id": "1b9f7e30"
+    },
+    {
+      "type": "purchase",
+      "amount": 100,
+      "payment_id": "flowglad_1770562977013",
+      "reason": "Purchased 100 credits"
+    },
+    {
+      "type": "deduct",
+      "amount": 4,
+      "reason": "Generated 4 tools for Swagger Petstore",
+      "session_id": "3f7dd0c3"
     }
   ]
 }

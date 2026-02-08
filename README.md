@@ -1,4 +1,4 @@
-# MCP Adapter Generator
+# MYME — MCP Adapter Generator
 
 **One command** to turn any Swagger/OpenAPI URL into a deployed MCP server.
 
@@ -6,7 +6,37 @@
 python -m mcp_adapter generate --url https://your-api.com/openapi.json -o output/my-mcp --name my-api
 ```
 
-Code is generated entirely by **DeepSeek-V3** (via [Featherless AI](https://featherless.ai)), validated with `ast.parse()`, and auto-repaired if needed. No templates, no scaffolding — purely generative.
+No templates, no scaffolding — purely generative. Code is validated with `ast.parse()` and auto-repaired if needed.
+
+---
+
+## Hackathon Sponsors & Pipeline Integration
+
+MYME is built on top of an incredible stack of sponsor technologies. Each stage of the pipeline is powered by a different sponsor:
+
+```
+  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌────────────┐
+  │  1. DESIGN   │──▶│  2. INGEST   │──▶│  3. DISCOVER  │──▶│  4. GENERATE │──▶│  5. TEST     │──▶│  6. DEPLOY  │
+  │              │   │              │   │              │   │              │   │              │   │            │
+  │  Figma MCP   │   │ Gemini 2.5   │   │ Featherless  │   │ Featherless  │   │ Featherless  │   │ Dedalus    │
+  │  (UI Design) │   │ Flash        │   │ DeepSeek R1  │   │ DeepSeek V3  │   │ DeepSeek V3  │   │ MCP + Auth │
+  └──────────────┘   └──────────────┘   └──────────────┘   └──────────────┘   └──────────────┘   └────────────┘
+        │                  │                  │                   │                  │                  │
+    Figma MCP          Google AI         Featherless AI      Featherless AI     Featherless AI     Dedalus Labs
+```
+
+### Sponsor → Pipeline Mapping
+
+| Pipeline Stage | Sponsor | Technology | What It Does |
+|---|---|---|---|
+| **UI Design** | [Figma MCP](https://www.figma.com/) | Figma MCP Server | The entire MYME frontend UI was planned and designed using the Figma MCP |
+| **Ingest** | [Google AI](https://ai.google.dev/) | Gemini 2.5 Flash | Parses and understands unstructured API documentation and raw docs |
+| **Discover & Mine** | [Featherless AI](https://featherless.ai/) | DeepSeek R1 (Reasoning) | Deep reasoning to group endpoints into high-level MCP tools, classify capabilities, and resolve edge cases |
+| **Schema Generation** | [Dedalus Labs](https://www.dedaluslabs.ai/) | Dedalus API | Synthesizes clean type schemas for tool inputs and outputs |
+| **Code Generation** | [Featherless AI](https://featherless.ai/) | DeepSeek V3 | Generates the complete MCP server code (`server.py`) in a single LLM call — purely generative |
+| **Test Generation** | [Featherless AI](https://featherless.ai/) | DeepSeek V3 | Generates contract test suites to validate every tool in the MCP server |
+| **Deploy** | [Dedalus Labs](https://www.dedaluslabs.ai/) | Dedalus MCP + Auth | Deploys the generated MCP server to production. For authenticated APIs, Dedalus MCP Auth handles credential management |
+| **Billing & Credits** | [Flowglad](https://flowglad.com/) | Flowglad Payments | Integrated payment system — test mode payments to purchase credits that power MYME's generation pipeline |
 
 ---
 
@@ -23,11 +53,12 @@ Code is generated entirely by **DeepSeek-V3** (via [Featherless AI](https://feat
   └──────────────┘   └──────────────┘   └──────────────┘   └──────────────┘   └────────────┘
 ```
 
-1. **Ingest** — Fetches the spec from a URL or local file. Parses OpenAPI 3.x / Swagger 2.x / Postman v2.1.
-2. **Mine** — Groups endpoints into high-level tools, merges related GET endpoints into search tools.
+1. **Ingest** — Fetches the spec from a URL or local file. Parses OpenAPI 3.x / Swagger 2.x / Postman v2.1 using **Gemini 2.5 Flash**.
+2. **Mine** — Groups endpoints into high-level tools using **DeepSeek R1** reasoning via Featherless AI.
 3. **Safety** — Classifies tools as read/write/destructive. Adds safety badges. Applies allowlist/denylist.
-4. **Codegen** — DeepSeek-V3 generates the complete `server.py` in a single LLM call. Validated with `ast.parse()`.
+4. **Codegen** — **DeepSeek V3** (via Featherless AI) generates the complete `server.py` in a single LLM call. Validated with `ast.parse()`.
 5. **Output** — Writes `server.py`, `test_server.py`, `main.py`, `pyproject.toml`, `.env.example`, `requirements.txt`.
+6. **Deploy** — Pushes to GitHub and deploys via **Dedalus MCP**. Authenticated APIs use **Dedalus MCP Auth**.
 
 ---
 
@@ -323,7 +354,7 @@ Controls: `--block-destructive`, `--allowlist`, `--denylist`, `--max-tools`
 
 ## Credit System
 
-The MCP Maker uses a credit-based system. Each API tool generated into an MCP server costs **1 credit**. Credits can be purchased at **100 credits for $10.00**.
+MYME uses a credit-based system. Each API tool generated into an MCP server costs **1 credit**. Credits can be purchased at **100 credits for $10.00**.
 
 ### Check your balance
 
