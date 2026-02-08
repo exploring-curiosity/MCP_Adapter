@@ -462,6 +462,82 @@ def generate(
         )
 
         # Deployment manifest — everything Dedalus needs in one file
+        # Build env vars: always include BASE_URL, then add auth-specific vars
+        env_vars: dict[str, dict] = {
+            f"{env_prefix}_BASE_URL": {
+                "value": spec.base_url,
+                "required": True,
+                "description": f"Base URL for {spec.title}",
+            },
+        }
+
+        # Detect auth credentials from spec
+        auth_info: list[dict] = []
+        if spec.auth_schemes:
+            for scheme in spec.auth_schemes:
+                if scheme.scheme_type == "apiKey":
+                    header = scheme.header_name or scheme.name or "X-API-Key"
+                    env_key = f"{env_prefix}_API_KEY"
+                    env_vars[env_key] = {
+                        "value": "",
+                        "required": True,
+                        "description": f"API key — sent as `{header}` header",
+                    }
+                    auth_info.append({
+                        "type": "apiKey",
+                        "header": header,
+                        "location": scheme.location or "header",
+                        "env_var": env_key,
+                    })
+                elif scheme.scheme_type in ("http", "oauth2"):
+                    env_key = f"{env_prefix}_API_KEY"
+                    env_vars[env_key] = {
+                        "value": "",
+                        "required": True,
+                        "description": "Bearer token — sent as `Authorization: Bearer <token>`",
+                    }
+                    auth_info.append({
+                        "type": scheme.scheme_type,
+                        "header": "Authorization",
+                        "scheme": "Bearer",
+                        "env_var": env_key,
+                    })
+                    if scheme.scheme_type == "oauth2" and scheme.flows:
+                        # Add OAuth-specific env vars
+                        env_vars[f"{env_prefix}_CLIENT_ID"] = {
+                            "value": "",
+                            "required": True,
+                            "description": "OAuth2 client ID",
+                        }
+                        env_vars[f"{env_prefix}_CLIENT_SECRET"] = {
+                            "value": "",
+                            "required": True,
+                            "description": "OAuth2 client secret",
+                        }
+                        auth_info[-1]["oauth_env_vars"] = [
+                            f"{env_prefix}_CLIENT_ID",
+                            f"{env_prefix}_CLIENT_SECRET",
+                        ]
+                else:
+                    env_key = f"{env_prefix}_API_KEY"
+                    env_vars[env_key] = {
+                        "value": "",
+                        "required": True,
+                        "description": f"Credential for {scheme.scheme_type} auth ({scheme.name})",
+                    }
+                    auth_info.append({
+                        "type": scheme.scheme_type,
+                        "name": scheme.name,
+                        "env_var": env_key,
+                    })
+        else:
+            # No auth declared — still include optional API_KEY
+            env_vars[f"{env_prefix}_API_KEY"] = {
+                "value": "",
+                "required": False,
+                "description": "Optional API key (no auth required by spec)",
+            }
+
         dedalus_manifest = {
             "server_name": name,
             "api_title": spec.title,
@@ -469,10 +545,9 @@ def generate(
             "base_url": spec.base_url,
             "env_prefix": env_prefix,
             "tool_count": len(tools),
-            "env_vars": {
-                f"{env_prefix}_BASE_URL": spec.base_url,
-                f"{env_prefix}_API_KEY": "your-api-key-here",
-            },
+            "auth_required": len(spec.auth_schemes) > 0,
+            "auth_schemes": auth_info,
+            "env_vars": env_vars,
             "tools": [
                 {
                     "name": t.name,

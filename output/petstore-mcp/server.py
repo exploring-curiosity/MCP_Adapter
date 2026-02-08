@@ -4,13 +4,14 @@ from typing import Any
 import httpx
 from dedalus_mcp import MCPServer, tool
 
-BASE_URL = os.getenv("PETSTORE_API_BASE_URL", "https://petstore.example.com/api/v1")
-API_KEY = os.getenv("PETSTORE_API_API_KEY", "")
+BASE_URL = os.getenv("SWAGGER_PETSTORE_BASE_URL", "https://petstore.swagger.io/v2")
+API_KEY = os.getenv("SWAGGER_PETSTORE_API_KEY", "")
 
 def _headers() -> dict[str, str]:
     h = {"Content-Type": "application/json", "Accept": "application/json"}
     if API_KEY:
-        h["X-API-Key"] = API_KEY
+        h["api_key"] = API_KEY
+        h["Authorization"] = f"Bearer {API_KEY}"
     return h
 
 async def _request(method: str, path: str, *, params: dict[str, Any] | None = None,
@@ -30,110 +31,125 @@ async def _request(method: str, path: str, *, params: dict[str, Any] | None = No
         except Exception as e:
             return json.dumps({"error": str(e)})
 
-@tool(description="Mark a pet as adopted [WRITES DATA]")
-async def adoptpet(petId: int, owner_id: int, notes: str | None = None) -> str:
-    """Mark a pet as adopted."""
-    body: dict[str, Any] = {"owner_id": owner_id}
-    if notes is not None:
-        body["notes"] = notes
-    return await _request("POST", f"/pets/{petId}/adopt", body=body)
+@tool(description="Add a new pet to the store [WRITES DATA]")
+async def addpet(body: dict) -> str:
+    """Add a new pet to the store."""
+    return await _request("POST", "/pet", body=body)
 
-@tool(description="Register a new owner [WRITES DATA]")
-async def createowner(name: str, email: str, id: int | None = None, phone: str | None = None) -> str:
-    """Register a new owner."""
-    body: dict[str, Any] = {"name": name, "email": email}
-    if id is not None:
-        body["id"] = id
-    if phone is not None:
-        body["phone"] = phone
-    return await _request("POST", "/owners", body=body)
+@tool(description="Create user [WRITES DATA]")
+async def createuser(body: dict) -> str:
+    """Create user."""
+    return await _request("POST", "/user", body=body)
 
-@tool(description="Add a new pet [WRITES DATA]")
-async def createpet(name: str, species: str, id: int | None = None, breed: str | None = None,
-                   age: int | None = None, status: str | None = None) -> str:
-    """Add a new pet."""
-    body: dict[str, Any] = {"name": name, "species": species}
-    if id is not None:
-        body["id"] = id
-    if breed is not None:
-        body["breed"] = breed
-    if age is not None:
-        body["age"] = age
-    if status is not None:
-        body["status"] = status
-    return await _request("POST", "/pets", body=body)
+@tool(description="Creates list of users with given input array [WRITES DATA]")
+async def createuserswitharrayinput(body: list) -> str:
+    """Create users from array."""
+    return await _request("POST", "/user/createWithArray", body=body)
 
-@tool(description="Delete an owner record [DESTRUCTIVE — may permanently delete data]")
-async def deleteowner(ownerId: int) -> str:
-    """Delete an owner record."""
-    return await _request("DELETE", f"/owners/{ownerId}")
+@tool(description="Creates list of users with given input array [WRITES DATA]")
+async def createuserswithlistinput(body: list) -> str:
+    """Create users from list."""
+    return await _request("POST", "/user/createWithList", body=body)
 
-@tool(description="Delete a pet [DESTRUCTIVE — may permanently delete data]")
-async def deletepet(petId: int) -> str:
+@tool(description="Delete purchase order by ID [DESTRUCTIVE]")
+async def deleteorder(orderId: str) -> str:
+    """Delete an order."""
+    return await _request("DELETE", f"/store/order/{orderId}")
+
+@tool(description="Deletes a pet [DESTRUCTIVE]")
+async def deletepet(petId: str) -> str:
     """Delete a pet."""
-    return await _request("DELETE", f"/pets/{petId}")
+    return await _request("DELETE", f"/pet/{petId}")
 
-@tool(description="Search or list owners with flexible filtering.")
-async def search_owners(ownerId: int | None = None, limit: int | None = None,
-                       offset: int | None = None) -> str:
-    """Search or list owners."""
-    if ownerId is not None:
-        path = f"/owners/{ownerId}"
-        return await _request("GET", path)
-    params: dict[str, Any] = {}
-    if limit is not None:
-        params["limit"] = limit
-    if offset is not None:
-        params["offset"] = offset
-    return await _request("GET", "/owners", params=params)
+@tool(description="Delete user [DESTRUCTIVE]")
+async def deleteuser(username: str) -> str:
+    """Delete a user."""
+    return await _request("DELETE", f"/user/{username}")
 
-@tool(description="Search or list pets with flexible filtering.")
-async def search_pets(petId: int | None = None, species: str | None = None,
-                     status: str | None = None, limit: int | None = None,
-                     offset: int | None = None, q: str | None = None) -> str:
-    """Search or list pets."""
-    if petId is not None:
-        return await _request("GET", f"/pets/{petId}")
-    params: dict[str, Any] = {}
-    if species is not None:
-        params["species"] = species
-    if status is not None:
-        params["status"] = status
-    if limit is not None:
-        params["limit"] = limit
-    if offset is not None:
-        params["offset"] = offset
-    if q is not None:
-        params["q"] = q
-        return await _request("GET", "/pets/search", params=params)
-    return await _request("GET", "/pets", params=params)
+@tool(description="Returns pet inventories by status")
+async def getinventory() -> str:
+    """Get inventory status."""
+    return await _request("GET", "/store/inventory")
 
-@tool(description="Update a pet [WRITES DATA]")
-async def updatepet(petId: int, name: str, species: str, id: int | None = None,
-                   breed: str | None = None, age: int | None = None,
-                   status: str | None = None) -> str:
+@tool(description="Find purchase order by ID")
+async def getorderbyid(orderId: str) -> str:
+    """Get order by ID."""
+    return await _request("GET", f"/store/order/{orderId}")
+
+@tool(description="Place an order for a pet [WRITES DATA]")
+async def placeorder(body: dict) -> str:
+    """Place an order."""
+    return await _request("POST", "/store/order", body=body)
+
+@tool(description="Search or list pet with flexible filtering")
+async def search_pet(status: str | None = None, tags: str | None = None, petId: str | None = None) -> str:
+    """Search pets."""
+    if petId:
+        return await _request("GET", f"/pet/{petId}")
+    params = {}
+    if status:
+        return await _request("GET", "/pet/findByStatus", params={"status": status})
+    if tags:
+        return await _request("GET", "/pet/findByTags", params={"tags": tags})
+    return json.dumps({"error": "Must provide status, tags, or petId"})
+
+@tool(description="Search or list user with flexible filtering")
+async def search_user(username: str | None = None, password: str | None = None) -> str:
+    """Search users."""
+    if username:
+        return await _request("GET", f"/user/{username}")
+    if password:
+        return await _request("GET", "/user/login", params={"username": username, "password": password})
+    return await _request("GET", "/user/logout")
+
+@tool(description="Update an existing pet [WRITES DATA]")
+async def updatepet(body: dict) -> str:
     """Update a pet."""
-    body: dict[str, Any] = {"name": name, "species": species}
-    if id is not None:
-        body["id"] = id
-    if breed is not None:
-        body["breed"] = breed
-    if age is not None:
-        body["age"] = age
+    return await _request("PUT", "/pet", body=body)
+
+@tool(description="Updates a pet in the store with form data [WRITES DATA]")
+async def updatepetwithform(petId: str, name: str | None = None, status: str | None = None) -> str:
+    """Update pet with form."""
+    body = {}
+    if name is not None:
+        body["name"] = name
     if status is not None:
         body["status"] = status
-    return await _request("PUT", f"/pets/{petId}", body=body)
+    return await _request("POST", f"/pet/{petId}", body=body)
 
-server = MCPServer("petstore")
+@tool(description="Updated user [WRITES DATA]")
+async def updateuser(username: str, body: dict) -> str:
+    """Update a user."""
+    return await _request("PUT", f"/user/{username}", body=body)
+
+@tool(description="uploads an image [WRITES DATA]")
+async def uploadfile(petId: str, additionalMetadata: str | None = None, file: str | None = None) -> str:
+    """Upload a file."""
+    body = {}
+    if additionalMetadata is not None:
+        body["additionalMetadata"] = additionalMetadata
+    if file is not None:
+        body["file"] = file
+    return await _request("POST", f"/pet/{petId}/uploadImage", body=body)
+
+server = MCPServer("petstore-mcp")
 server.collect(
-    adoptpet,
-    createowner,
-    createpet,
-    deleteowner,
+    addpet,
+    createuser,
+    createuserswitharrayinput,
+    createuserswithlistinput,
+    deleteorder,
     deletepet,
-    search_owners,
-    search_pets,
-    updatepet
+    deleteuser,
+    getinventory,
+    getorderbyid,
+    placeorder,
+    search_pet,
+    search_user,
+    updatepet,
+    updatepetwithform,
+    updateuser,
+    uploadfile
 )
 if __name__ == "__main__":
     asyncio.run(server.serve())

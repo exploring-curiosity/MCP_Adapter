@@ -197,10 +197,28 @@ def generate_cmd(
         click.echo(f"")
         click.echo(f"   In the Dedalus dashboard:")
         click.echo(f"   1. Click 'Add Server' → connect repo '{deploy_info['repo_full_name']}'")
-        click.echo(f"   2. Set these env vars (copy-paste):")
+        click.echo(f"   2. Set environment variables:")
+        click.echo(f"")
         env_vars = deploy_info.get("env_vars", {})
-        for key, val in env_vars.items():
-            click.echo(f"        {key} = {val}")
+        required_vars = {k: v for k, v in env_vars.items() if v.get("required")}
+        optional_vars = {k: v for k, v in env_vars.items() if not v.get("required")}
+        if required_vars:
+            click.echo(f"      Required:")
+            for key, info in required_vars.items():
+                val = info.get("value") or "<set-your-value>"
+                desc = info.get("description", "")
+                click.echo(f"        {key} = {val}")
+                if desc:
+                    click.echo(f"          └─ {desc}")
+        if optional_vars:
+            click.echo(f"      Optional:")
+            for key, info in optional_vars.items():
+                val = info.get("value") or ""
+                desc = info.get("description", "")
+                click.echo(f"        {key} = {val}")
+                if desc:
+                    click.echo(f"          └─ {desc}")
+        click.echo(f"")
         click.echo(f"   3. Click 'Deploy'")
         click.echo(f"")
         click.echo(f"   After deploy, use in any AI agent:")

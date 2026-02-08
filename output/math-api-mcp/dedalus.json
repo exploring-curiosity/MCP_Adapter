@@ -5,9 +5,19 @@
   "base_url": "http://127.0.0.1:8001",
   "env_prefix": "BASIC_MATH_API",
   "tool_count": 5,
+  "auth_required": false,
+  "auth_schemes": [],
   "env_vars": {
-    "BASIC_MATH_API_BASE_URL": "http://127.0.0.1:8001",
-    "BASIC_MATH_API_API_KEY": "your-api-key-here"
+    "BASIC_MATH_API_BASE_URL": {
+      "value": "http://127.0.0.1:8001",
+      "required": true,
+      "description": "Base URL for Basic Math API"
+    },
+    "BASIC_MATH_API_API_KEY": {
+      "value": "",
+      "required": false,
+      "description": "Optional API key (no auth required by spec)"
+    }
   },
   "tools": [
     {

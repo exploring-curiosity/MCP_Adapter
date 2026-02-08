@@ -198,20 +198,19 @@ https://mcp.dedaluslabs.ai/your-org/my-api/mcp
 
 > **Scaling tip**: After the first deploy, subsequent `--deploy` runs to the same repo will push updates and Dedalus will auto-redeploy.
 
-### Step 4: Use from any AI agent
+### Step 4: Query your deployed MCP server
 
-```python
-from dedalus_labs import AsyncDedalus, DedalusRunner
+Use `query_mcp.py` to talk to any deployed MCP server in natural language:
 
-client = AsyncDedalus()
-runner = DedalusRunner(client)
-result = await runner.run(
-    input="Find all available dogs",
-    model="openai/gpt-4o-mini",
-    mcp_servers=["your-org/my-api"],
-)
-print(result)
+```bash
+# Query by server slug
+python query_mcp.py --server your-user/my-api "What is 10 divided by 3?"
+
+# Interactive mode — keep chatting
+python query_mcp.py --server your-user/my-api --interactive
 ```
+
+If the API requires auth and credentials aren't configured, the tool will detect the error and tell you exactly what to set on the Dedalus dashboard.
 
 Or test locally before deploying:
 
@@ -237,6 +236,53 @@ python test_server.py          # auto-generated tests
 
 ---
 
+## Querying Deployed MCP Servers — `query_mcp.py`
+
+A standalone CLI to query **any** Dedalus-deployed MCP server in natural language. Works from anywhere — no local files needed.
+
+### Usage
+
+```bash
+# Query a deployed server by slug
+python query_mcp.py --server user/math-api "What is 10 divided by 3?"
+
+# Interactive chat mode
+python query_mcp.py --server user/math-api --interactive
+
+# Use a different model
+python query_mcp.py --server user/my-api --model openai/gpt-4o "Describe the API"
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--server, -s` | MCP server slug (e.g. `user/math-api`) — **required** |
+| `--model, -m` | AI model (default: `openai/gpt-4o-mini`) |
+| `--interactive, -i` | Interactive chat mode |
+
+### How credentials work
+
+If the upstream API requires authentication, the tool **automatically detects auth errors** at runtime (401, 403, etc.) and tells you exactly what to configure:
+
+```
+🔒 Authentication required for 'user/petstore-mcp'
+   The MCP server returned auth errors:
+
+   ❌ search_pet: {"error": "401 Unauthorized"}
+
+   To fix, configure these env vars on the Dedalus dashboard:
+     PETSTORE_MCP_BASE_URL = <your-api-base-url>
+     PETSTORE_MCP_API_KEY  = <your-api-key>
+
+   Dashboard: https://www.dedaluslabs.ai/dashboard/servers
+   Select 'user/petstore-mcp' → Environment Variables → set the values → Redeploy
+```
+
+Credentials are configured on the **Dedalus dashboard** as environment variables — not passed at query time. The `dedalus.json` manifest in the generated output also lists all required env vars for reference
+
+---
+
 ## Generated Output
 
 ```
@@ -246,7 +292,8 @@ output/<name>/
 ├── pyproject.toml     # Dependencies for deployment
 ├── test_server.py     # Auto-generated tests
 ├── requirements.txt   # Python dependencies
-└── .env.example       # Environment variable template
+├── .env.example       # Environment variable template
+└── dedalus.json       # Deployment manifest (env vars, auth, tools)
 ```
 
 ---
@@ -280,6 +327,7 @@ Controls: `--block-destructive`, `--allowlist`, `--denylist`, `--max-tools`
 Dedalus/
 ├── .env                     # FEATHERLESS_API_KEY (+ optional K2, Dedalus keys)
 ├── requirements.txt
+├── query_mcp.py             # Query any deployed MCP server
 ├── mcp_adapter/
 │   ├── cli.py               # Click CLI
 │   ├── ingest.py            # OpenAPI/Postman/URL parser

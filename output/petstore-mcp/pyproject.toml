@@ -1,7 +1,7 @@
 [project]
-name = "petstore"
+name = "petstore-mcp"
 version = "0.1.0"
-description = "Auto-generated MCP adapter for Petstore API"
+description = "Auto-generated MCP adapter for Swagger Petstore"
 requires-python = ">=3.11"
 dependencies = [
     "dedalus-mcp>=0.7.0",

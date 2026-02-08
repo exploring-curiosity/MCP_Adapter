@@ -1,50 +1,38 @@
-from __future__ import annotations
 import asyncio
 import json
 from typing import Any
 from dedalus_mcp.client import MCPClient
-import pytest
 
-async def test_list_tools():
-    """Verify all 8 tools are registered."""
-    client = await MCPClient.connect("http://127.0.0.1:8000/mcp")
-    try:
-        tools = await client.list_tools()
-        assert len(tools) == 8, f"Expected 8 tools, got {len(tools)}"
-    finally:
-        await client.close()
+async def test_list_tools(client: MCPClient) -> None:
+    """Verify all 16 tools are registered."""
+    tools = await client.list_tools()
+    assert len(tools) == 16, f"Expected 16 tools, got {len(tools)}"
+    print("✅ test_list_tools passed")
 
-async def test_tool_schemas():
+async def test_tool_schemas(client: MCPClient) -> None:
     """Verify each tool has name and description."""
+    tools = await client.list_tools()
+    for tool in tools:
+        assert "name" in tool, f"Tool missing name: {tool}"
+        assert "description" in tool, f"Tool {tool['name']} missing description"
+    print("✅ test_tool_schemas passed")
+
+async def run_tests() -> None:
+    """Run all test cases against the MCP server."""
     client = await MCPClient.connect("http://127.0.0.1:8000/mcp")
     try:
-        tools = await client.list_tools()
-        for tool in tools:
-            assert "name" in tool, f"Tool missing name: {tool}"
-            assert "description" in tool, f"Tool missing description: {tool['name']}"
+        await test_list_tools(client)
+        await test_tool_schemas(client)
     finally:
         await client.close()
 
-async def test_sample_tool_calls():
-    """Test basic functionality of sample tools."""
-    client = await MCPClient.connect("http://127.0.0.1:8000/mcp")
+def main() -> None:
+    """Run tests and print results."""
     try:
-        # Test search_pets (should at least not error)
-        result = await client.call_tool("search_pets", {})
-        assert isinstance(json.loads(result), (dict, list)), "Invalid JSON response"
-        
-        # Test createpet schema (won't actually create without valid params)
-        with pytest.raises(Exception):
-            await client.call_tool("createpet", {"invalid": "params"})
-    finally:
-        await client.close()
-
-async def main():
-    """Run all test cases."""
-    await test_list_tools()
-    await test_tool_schemas()
-    await test_sample_tool_calls()
-    print("All tests passed!")
+        asyncio.run(run_tests())
+    except Exception as e:
+        print(f"❌ Tests failed: {e}")
+        raise
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
