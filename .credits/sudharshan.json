@@ -1,8 +1,8 @@
 {
   "user": "sudharshan",
-  "balance": 446,
+  "balance": 435,
   "total_purchased": 500,
-  "total_spent": 54,
+  "total_spent": 65,
   "transactions": [
     {
       "type": "purchase",
@@ -81,6 +81,12 @@
       "amount": 4,
       "reason": "Generated 4 tools for Swagger Petstore",
       "session_id": "3f7dd0c3"
+    },
+    {
+      "type": "deduct",
+      "amount": 11,
+      "reason": "Generated 11 tools for Swagger Petstore",
+      "session_id": "b92fbf5c"
     }
   ]
 }

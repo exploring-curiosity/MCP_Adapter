@@ -1,4 +1,6 @@
-# MYME — MCP Adapter Generator
+# MYME — Make Your MCP Easy
+
+Youtube tutorial: [Youtube Tutorial](https://youtu.be/6wxYa0HstmA)
 
 **One command** to turn any Swagger/OpenAPI URL into a deployed MCP server.
 
