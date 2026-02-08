@@ -1,0 +1,133 @@
+{
+  "server_name": "petstore-mcp",
+  "api_title": "Swagger Petstore",
+  "api_version": "1.0.7",
+  "base_url": "https://petstore.swagger.io/v2",
+  "env_prefix": "SWAGGER_PETSTORE",
+  "tool_count": 16,
+  "auth_required": true,
+  "auth_schemes": [
+    {
+      "type": "apiKey",
+      "header": "api_key",
+      "location": "header",
+      "env_var": "SWAGGER_PETSTORE_API_KEY"
+    },
+    {
+      "type": "oauth2",
+      "header": "Authorization",
+      "scheme": "Bearer",
+      "env_var": "SWAGGER_PETSTORE_API_KEY"
+    }
+  ],
+  "env_vars": {
+    "SWAGGER_PETSTORE_BASE_URL": {
+      "value": "https://petstore.swagger.io/v2",
+      "required": true,
+      "description": "Base URL for Swagger Petstore"
+    },
+    "SWAGGER_PETSTORE_API_KEY": {
+      "value": "",
+      "required": true,
+      "description": "Bearer token \u2014 sent as `Authorization: Bearer <token>`"
+    }
+  },
+  "tools": [
+    {
+      "name": "addpet",
+      "safety": "write",
+      "method": "POST",
+      "path": "/pet"
+    },
+    {
+      "name": "createuser",
+      "safety": "write",
+      "method": "POST",
+      "path": "/user"
+    },
+    {
+      "name": "createuserswitharrayinput",
+      "safety": "write",
+      "method": "POST",
+      "path": "/user/createWithArray"
+    },
+    {
+      "name": "createuserswithlistinput",
+      "safety": "write",
+      "method": "POST",
+      "path": "/user/createWithList"
+    },
+    {
+      "name": "deleteorder",
+      "safety": "destructive",
+      "method": "DELETE",
+      "path": "/store/order/{orderId}"
+    },
+    {
+      "name": "deletepet",
+      "safety": "destructive",
+      "method": "DELETE",
+      "path": "/pet/{petId}"
+    },
+    {
+      "name": "deleteuser",
+      "safety": "destructive",
+      "method": "DELETE",
+      "path": "/user/{username}"
+    },
+    {
+      "name": "getinventory",
+      "safety": "read",
+      "method": "GET",
+      "path": "/store/inventory"
+    },
+    {
+      "name": "getorderbyid",
+      "safety": "read",
+      "method": "GET",
+      "path": "/store/order/{orderId}"
+    },
+    {
+      "name": "placeorder",
+      "safety": "write",
+      "method": "POST",
+      "path": "/store/order"
+    },
+    {
+      "name": "search_pet",
+      "safety": "read",
+      "method": "GET",
+      "path": "/pet/findByStatus"
+    },
+    {
+      "name": "search_user",
+      "safety": "read",
+      "method": "GET",
+      "path": "/user/{username}"
+    },
+    {
+      "name": "updatepet",
+      "safety": "write",
+      "method": "PUT",
+      "path": "/pet"
+    },
+    {
+      "name": "updatepetwithform",
+      "safety": "write",
+      "method": "POST",
+      "path": "/pet/{petId}"
+    },
+    {
+      "name": "updateuser",
+      "safety": "write",
+      "method": "PUT",
+      "path": "/user/{username}"
+    },
+    {
+      "name": "uploadfile",
+      "safety": "write",
+      "method": "POST",
+      "path": "/pet/{petId}/uploadImage"
+    }
+  ]
+}

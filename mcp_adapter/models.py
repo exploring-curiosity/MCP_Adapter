@@ -32,6 +32,7 @@ class ParamLocation(str, Enum):
     HEADER = "header"
     COOKIE = "cookie"
     BODY = "body"
+    FORM_DATA = "formData"
 
 
 # ── Endpoint representation ────────────────────────────────────────────────

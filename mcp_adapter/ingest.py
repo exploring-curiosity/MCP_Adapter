@@ -46,21 +46,94 @@ def _is_url(source: str) -> bool:
 
 
 def _fetch_url(url: str) -> dict[str, Any]:
-    """Fetch an OpenAPI spec from a URL (JSON or YAML)."""
+    """Fetch an OpenAPI spec from a URL (JSON or YAML).
+
+    If the URL points to a Swagger UI HTML page, auto-discover the actual
+    spec URL by parsing the page or trying common patterns.
+    """
+    import re
+
     logger = get_logger()
     logger.info("Fetching spec from URL: %s", url)
     with httpx.Client(timeout=30.0, follow_redirects=True) as client:
         resp = client.get(url, headers={"Accept": "application/json, application/yaml, */*"})
         resp.raise_for_status()
-    content_type = resp.headers.get("content-type", "")
-    text = resp.text
-    logger.debug("Fetched %d bytes (content-type: %s)", len(text), content_type)
+        content_type = resp.headers.get("content-type", "")
+        text = resp.text
+        logger.debug("Fetched %d bytes (content-type: %s)", len(text), content_type)
 
-    # Try JSON first, fall back to YAML
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return yaml.safe_load(text)
+        # Try JSON first, fall back to YAML
+        try:
+            data = json.loads(text)
+            if isinstance(data, dict):
+                return data
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Check if YAML produces a dict
+        try:
+            data = yaml.safe_load(text)
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+
+        # If we got here, the response is likely HTML (Swagger UI page).
+        # Try to extract the spec URL from the page content.
+        logger.info("Response looks like HTML, attempting to discover spec URL...")
+        parsed = urlparse(url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+
+        # Look for spec URL in Swagger UI HTML (e.g. url: "/v2/swagger.json")
+        spec_url_candidates: list[str] = []
+
+        # Pattern: url: "..." or url : "..." in Swagger UI JS config
+        for match in re.findall(r'''url\s*[:=]\s*["']([^"']+)["']''', text):
+            if any(kw in match.lower() for kw in ("swagger", "openapi", "api-docs", ".json", ".yaml")):
+                spec_url_candidates.append(match)
+
+        # Common fallback patterns
+        path_base = parsed.path.rstrip("/")
+        spec_url_candidates.extend([
+            f"{path_base}/v2/swagger.json",
+            f"{path_base}/v3/api-docs",
+            f"{path_base}/swagger.json",
+            f"{path_base}/openapi.json",
+            "/v2/swagger.json",
+            "/v3/api-docs",
+            "/openapi.json",
+            "/swagger.json",
+            "/api/openapi.json",
+        ])
+
+        for candidate in spec_url_candidates:
+            # Resolve relative URLs
+            if candidate.startswith("http"):
+                spec_url = candidate
+            elif candidate.startswith("/"):
+                spec_url = base + candidate
+            else:
+                spec_url = base + "/" + candidate
+
+            logger.info("Trying spec URL: %s", spec_url)
+            try:
+                r = client.get(spec_url, headers={"Accept": "application/json"})
+                if r.status_code == 200:
+                    try:
+                        data = json.loads(r.text)
+                        if isinstance(data, dict) and ("openapi" in data or "swagger" in data):
+                            logger.info("Found valid spec at %s", spec_url)
+                            return data
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+            except Exception:
+                continue
+
+    raise ValueError(
+        f"Could not find an OpenAPI/Swagger spec at {url}. "
+        f"Try providing the direct URL to the spec JSON/YAML "
+        f"(e.g. https://petstore.swagger.io/v2/swagger.json)"
+    )
 
 
 def _load_file(path: str | Path) -> dict[str, Any]:
