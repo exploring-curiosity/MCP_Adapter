@@ -27,8 +27,12 @@ from urllib.parse import urlparse
 import httpx
 from dotenv import load_dotenv
 
-# Load environment variables
+from .logger import get_logger
+
 load_dotenv()
+
+
+logger = get_logger()
 
 
 def is_url(source: str) -> bool:
@@ -42,7 +46,7 @@ def is_url(source: str) -> bool:
 
 def fetch_url(url: str) -> str:
     """Fetch content from a URL."""
-    print(f"[INFO] Fetching content from: {url}")
+    logger.info("Fetching content from: %s", url)
     with httpx.Client(timeout=30.0, follow_redirects=True) as client:
         resp = client.get(url, headers={"Accept": "application/json, application/yaml, */*"})
         resp.raise_for_status()
@@ -60,7 +64,7 @@ def parse_with_prance(source: str) -> dict[str, Any]:
     """
     from prance import ResolvingParser
     
-    print(f"[INFO] Parsing with Prance: {source}")
+    logger.info("Parsing with Prance: %s", source)
     
     try:
         # Increase recursion limit for large specs like Stripe
@@ -149,7 +153,7 @@ def parse_with_prance(source: str) -> dict[str, Any]:
         }
         
     except Exception as e:
-        print(f"[ERROR] Prance parsing failed: {e}")
+        logger.error("Prance parsing failed: %s", e)
         raise
 
 
@@ -169,7 +173,7 @@ def parse_with_gemini(source: str, content: str | None = None, max_retries: int 
     if not api_key:
         raise ValueError("GEMINI_API_KEY environment variable is required for Gemini parsing")
     
-    print(f"[INFO] Parsing with Gemini API: {source}")
+    logger.info("Parsing with Gemini API: %s", source)
     
     # Load content if not provided
     if content is None:
@@ -282,19 +286,19 @@ Return ONLY valid JSON matching this exact structure:
             }
             
         except json.JSONDecodeError as e:
-            print(f"[ERROR] Failed to parse Gemini response as JSON (attempt {attempt + 1}): {e}")
+            logger.error("Failed to parse Gemini response as JSON (attempt %d): %s", attempt + 1, e)
             if attempt < max_retries - 1:
-                print(f"[INFO] Retrying...")
-                time.sleep(2 ** attempt)  # Exponential backoff
+                logger.info("Retrying...")
+                time.sleep(2 ** attempt)
             else:
-                print(f"[DEBUG] Response was: {response_text[:500]}...")
+                logger.debug("Response was: %s...", response_text[:500])
                 raise ValueError(f"Gemini returned invalid JSON after {max_retries} attempts: {e}")
         except Exception as e:
             error_str = str(e)
             if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
                 if attempt < max_retries - 1:
-                    wait_time = 2 ** (attempt + 2)  # 4s, 8s, 16s
-                    print(f"[WARN] Rate limited, waiting {wait_time}s before retry...")
+                    wait_time = 2 ** (attempt + 2)
+                    logger.warning("Rate limited, waiting %ds before retry...", wait_time)
                     time.sleep(wait_time)
                 else:
                     raise
@@ -346,11 +350,6 @@ def ingest(
     Returns:
         Dict with source, parser, api_info, and tools
     """
-    # Determine output path
-    if output_path is None:
-        script_dir = Path(__file__).parent
-        output_path = str(script_dir / "raw_tool_definitions.json")
-    
     result: dict[str, Any]
     
     if use_gemini:
@@ -364,29 +363,23 @@ def ingest(
             try:
                 result = parse_with_prance(source)
             except Exception as e:
-                print(f"[WARN] Prance failed, falling back to Gemini: {e}")
+                logger.warning("Prance failed, falling back to Gemini: %s", e)
                 result = parse_with_gemini(source)
         else:
             # Non-standard docs, use Gemini
-            print(f"[INFO] Source doesn't appear to be OpenAPI, using Gemini")
+            logger.info("Source doesn't appear to be OpenAPI, using Gemini")
             result = parse_with_gemini(source)
     
-    # Write output
-    print(f"[INFO] Writing output to: {output_path}")
-    Path(output_path).write_text(
-        json.dumps(result, indent=2, ensure_ascii=False),
-        encoding="utf-8"
-    )
+    # Write output if path given
+    if output_path:
+        logger.info("Writing output to: %s", output_path)
+        Path(output_path).write_text(
+            json.dumps(result, indent=2, ensure_ascii=False),
+            encoding="utf-8"
+        )
     
-    # Summary
-    print(f"\n{'='*50}")
-    print(f"Ingestion Complete!")
-    print(f"{'='*50}")
-    print(f"Source: {result['source']}")
-    print(f"Parser: {result['parser']}")
-    print(f"API: {result['api_info'].get('title', 'Unknown')}")
-    print(f"Tools: {len(result['tools'])}")
-    print(f"Output: {output_path}")
+    logger.info("Ingestion complete — API: %s, Tools: %d, Parser: %s",
+                result['api_info'].get('title', 'Unknown'), len(result['tools']), result['parser'])
     
     return result
 

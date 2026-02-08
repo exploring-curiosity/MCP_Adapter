@@ -46,6 +46,25 @@ export interface Tool {
   tags: string[];
 }
 
+export interface Classification {
+  name: string;
+  classification: "safe" | "unsafe" | "conditional" | "unknown";
+  expose: boolean | "review";
+  reason: string;
+  confidence: number;
+}
+
+export interface ClassificationResult {
+  policy: string;
+  summary: {
+    total: number;
+    exposable: number;
+    blocked: number;
+    needs_review: number;
+  };
+  classifications: Classification[];
+}
+
 export interface SpecInfo {
   title: string;
   version: string;
@@ -83,11 +102,15 @@ export interface DeployInfo {
   base_url: string;
 }
 
+const DEDALUS_USER = "sudharshan";
+
 export interface PipelineState {
+  dedalusUser: string;
   sessionId: string | null;
   spec: SpecInfo | null;
   endpoints: DiscoveredEndpoint[];
   tools: Tool[];
+  classifications: ClassificationResult | null;
   generated: GenerateResult | null;
   testInfo: TestInfo | null;
   deployInfo: DeployInfo | null;
@@ -97,6 +120,9 @@ export interface PipelineState {
 
 interface PipelineContextValue extends PipelineState {
   runIngest: (source: string, sourceType: string) => Promise<void>;
+  runIngestFile: (file: File, sourceType: string) => Promise<void>;
+  runDiscover: (policy?: string, useGemini?: boolean) => Promise<void>;
+  confirmDiscovery: (allowedTools: string[]) => Promise<void>;
   updatePolicies: (policies: { name: string; safety: string; auto_execute: boolean; rate_limit_qpm: number }[]) => Promise<void>;
   runGenerate: (serverName?: string) => Promise<void>;
   runTest: () => Promise<void>;
@@ -105,10 +131,12 @@ interface PipelineContextValue extends PipelineState {
 }
 
 const initialState: PipelineState = {
+  dedalusUser: DEDALUS_USER,
   sessionId: null,
   spec: null,
   endpoints: [],
   tools: [],
+  classifications: null,
   generated: null,
   testInfo: null,
   deployInfo: null,
@@ -144,11 +172,86 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         spec: data.spec,
         endpoints: data.endpoints,
         tools: data.tools,
+        classifications: data.classifications || null,
       }));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
   }, []);
+
+  const runIngestFile = useCallback(async (file: File, sourceType: string) => {
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("source_type", sourceType);
+      const res = await fetch(`${API_BASE}/api/ingest/upload`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || "Ingestion failed");
+      }
+      const data = await res.json();
+      setState((s) => ({
+        ...s,
+        loading: false,
+        sessionId: data.session_id,
+        spec: data.spec,
+        endpoints: data.endpoints,
+        tools: data.tools,
+        classifications: data.classifications || null,
+      }));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  const runDiscover = useCallback(async (policy: string = "moderate", useGemini: boolean = false) => {
+    if (!state.sessionId) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/discover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: state.sessionId, policy, use_gemini: useGemini }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || "Classification failed");
+      }
+      const data = await res.json();
+      setState((s) => ({ ...s, loading: false, classifications: data }));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [state.sessionId]);
+
+  const confirmDiscovery = useCallback(async (allowedTools: string[]) => {
+    if (!state.sessionId) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/discover/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: state.sessionId, allowed_tools: allowedTools }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || "Confirm failed");
+      }
+      // Filter local state to match
+      setState((s) => ({
+        ...s,
+        loading: false,
+        tools: s.tools.filter((t) => allowedTools.includes(t.name)),
+        endpoints: s.endpoints.filter((ep) => allowedTools.includes(ep.operation_id)),
+      }));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [state.sessionId]);
 
   const updatePolicies = useCallback(async (policies: { name: string; safety: string; auto_execute: boolean; rate_limit_qpm: number }[]) => {
     if (!state.sessionId) return;
@@ -238,6 +341,9 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       value={{
         ...state,
         runIngest,
+        runIngestFile,
+        runDiscover,
+        confirmDiscovery,
         updatePolicies,
         runGenerate,
         runTest,

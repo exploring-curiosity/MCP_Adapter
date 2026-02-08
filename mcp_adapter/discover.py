@@ -26,8 +26,11 @@ from typing import Any, Literal
 
 from dotenv import load_dotenv
 
-# Load environment variables
+from .logger import get_logger
+
 load_dotenv()
+
+logger = get_logger()
 
 
 # ── Classification Rules ──────────────────────────────────────────────────────
@@ -203,7 +206,7 @@ def classify_batch_with_gemini(
     
     for i in range(0, len(tools), batch_size):
         batch = tools[i:i + batch_size]
-        print(f"[INFO] Classifying batch {i//batch_size + 1}/{(len(tools)-1)//batch_size + 1}")
+        logger.info("Classifying batch %d/%d", i//batch_size + 1, (len(tools)-1)//batch_size + 1)
         
         # Create prompt for batch classification
         tools_json = json.dumps(batch, indent=2)
@@ -269,7 +272,7 @@ Classify each tool based on its name, method, path, and description."""
             time.sleep(1)
             
         except Exception as e:
-            print(f"[WARN] Gemini batch failed: {e}")
+            logger.warning("Gemini batch failed: %s", e)
             # Fall back to rule-based for this batch
             for tool in batch:
                 result = apply_rules(tool, policy)
@@ -292,7 +295,7 @@ def enhance_with_reasoning(
     
     api_key = os.getenv("DEDALUS_API_KEY")
     if not api_key:
-        print("[WARN] DEDALUS_API_KEY not set, skipping reasoning enhancement")
+        logger.warning("DEDALUS_API_KEY not set, skipping reasoning enhancement")
         return classifications
     
     client = OpenAI(
@@ -307,10 +310,10 @@ def enhance_with_reasoning(
             edge_cases.append((i, tool, classification))
     
     if not edge_cases:
-        print("[INFO] No edge cases to analyze")
+        logger.info("No edge cases to analyze")
         return classifications
     
-    print(f"[INFO] Analyzing {len(edge_cases)} edge cases with {model}")
+    logger.info("Analyzing %d edge cases with %s", len(edge_cases), model)
     
     for idx, tool, current in edge_cases:
         prompt = f"""Analyze this API endpoint and determine if it should be exposed via MCP.
@@ -359,12 +362,61 @@ Respond with JSON only:
             time.sleep(0.5)  # Rate limiting
             
         except Exception as e:
-            print(f"[WARN] Reasoning failed for {tool.get('name')}: {e}")
+            logger.warning("Reasoning failed for %s: %s", tool.get('name'), e)
     
     return classifications
 
 
-# ── Main Classification ───────────────────────────────────────────────────────
+# ── In-memory Classification (for API server use) ────────────────────────────
+
+
+def classify_tools(
+    tools: list[dict],
+    policy: PolicyType = "moderate",
+    use_gemini: bool = False,
+    use_reasoning: bool = False,
+) -> dict:
+    """Classify a list of raw tool dicts in memory.
+
+    Returns dict with summary and classifications list.
+    """
+    if not tools:
+        return {"summary": {"total": 0, "exposable": 0, "blocked": 0, "needs_review": 0}, "classifications": []}
+
+    logger.info("Classifying %d tools with '%s' policy", len(tools), policy)
+
+    if use_gemini:
+        classifications = classify_batch_with_gemini(tools, policy)
+    else:
+        classifications = []
+        for tool in tools:
+            result = apply_rules(tool, policy)
+            result["name"] = tool.get("name", "")
+            classifications.append(result)
+
+    if use_reasoning:
+        classifications = enhance_with_reasoning(tools, classifications)
+
+    exposable = sum(1 for c in classifications if c.get("expose") is True)
+    blocked = sum(1 for c in classifications if c.get("expose") is False)
+    review = sum(1 for c in classifications if c.get("expose") == "review")
+
+    logger.info("Classification complete — Total: %d, Exposable: %d, Blocked: %d, Review: %d",
+                len(tools), exposable, blocked, review)
+
+    return {
+        "policy": policy,
+        "summary": {
+            "total": len(tools),
+            "exposable": exposable,
+            "blocked": blocked,
+            "needs_review": review,
+        },
+        "classifications": classifications,
+    }
+
+
+# ── File-based Classification (CLI use) ──────────────────────────────────────
 
 
 def classify(
@@ -383,7 +435,7 @@ def classify(
     if not tools:
         raise ValueError("No tools found in input file")
     
-    print(f"[INFO] Classifying {len(tools)} tools with '{policy}' policy")
+    logger.info("Classifying %d tools with '%s' policy", len(tools), policy)
     
     # Classify
     if use_gemini:
@@ -416,23 +468,15 @@ def classify(
         "classifications": classifications,
     }
     
-    # Write output
-    if output_path is None:
-        output_path = input_path.replace(".json", "_classified.json")
+    # Write output if path given
+    if output_path:
+        Path(output_path).write_text(
+            json.dumps(result, indent=2, ensure_ascii=False),
+            encoding="utf-8"
+        )
     
-    Path(output_path).write_text(
-        json.dumps(result, indent=2, ensure_ascii=False),
-        encoding="utf-8"
-    )
-    
-    print(f"\n{'='*50}")
-    print("Classification Complete!")
-    print(f"{'='*50}")
-    print(f"Total: {len(tools)}")
-    print(f"Exposable: {exposable} ({100*exposable//len(tools)}%)")
-    print(f"Blocked: {blocked} ({100*blocked//len(tools)}%)")
-    print(f"Needs Review: {review}")
-    print(f"Output: {output_path}")
+    logger.info("Classification complete — Total: %d, Exposable: %d, Blocked: %d, Review: %d",
+                len(tools), exposable, blocked, review)
     
     return result
 

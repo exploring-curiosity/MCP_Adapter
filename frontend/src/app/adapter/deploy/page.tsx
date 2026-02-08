@@ -12,7 +12,7 @@ import {
 
 export default function DeployPage() {
   const router = useRouter();
-  const { deployInfo, runDeploy, generated, loading, error } = usePipeline();
+  const { deployInfo, runDeploy, generated, loading, error, dedalusUser } = usePipeline();
   const [copied, setCopied] = useState<string | null>(null);
 
   if (!generated) {
@@ -29,7 +29,7 @@ export default function DeployPage() {
   }
 
   const handleDeploy = async () => {
-    await runDeploy("exploring-curiosity");
+    await runDeploy();
   };
 
   const copyToClipboard = (text: string, key: string) => {
@@ -57,7 +57,7 @@ export default function DeployPage() {
             <div className="text-center space-y-2">
               <h3 className="text-lg font-bold text-foreground">Ready to deploy</h3>
               <p className="text-sm text-muted-foreground max-w-md">
-                This will create a GitHub repository under <strong>exploring-curiosity</strong> with your generated MCP server and provide instructions to deploy it on Dedalus.
+                This will create a GitHub repository under your personal account with your generated MCP server and provide instructions to deploy it on Dedalus.
               </p>
             </div>
             {error && (
@@ -191,9 +191,9 @@ export default function DeployPage() {
                 <h4 className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Test with query_mcp.py</h4>
               </div>
               <div className="code-block p-4 text-xs font-mono text-foreground/80 space-y-1">
-                <p><span className="text-primary font-bold">$</span> python query_mcp.py --server {deployInfo.repo_full_name} &quot;What can this server do?&quot;</p>
+                <p><span className="text-primary font-bold">$</span> python query_mcp.py --server {dedalusUser}/{deployInfo.server_name} &quot;What can this server do?&quot;</p>
                 <p className="text-muted-foreground mt-2"># Or interactive mode:</p>
-                <p><span className="text-primary font-bold">$</span> python query_mcp.py --server {deployInfo.repo_full_name} --interactive</p>
+                <p><span className="text-primary font-bold">$</span> python query_mcp.py --server {dedalusUser}/{deployInfo.server_name} --interactive</p>
               </div>
             </div>
           </div>

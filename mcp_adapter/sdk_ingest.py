@@ -31,8 +31,11 @@ from urllib.parse import urlparse
 import httpx
 from dotenv import load_dotenv
 
-# Load environment variables
+from .logger import get_logger
+
 load_dotenv()
+
+logger = get_logger()
 
 
 # ── Language Detection ────────────────────────────────────────────────────────
@@ -123,7 +126,7 @@ def parse_github_url(url: str) -> tuple[str, str, str]:
 
 def fetch_github_tree(owner: str, repo: str, branch: str) -> list[dict]:
     """Fetch repository file tree from GitHub API."""
-    print(f"[INFO] Fetching file tree for {owner}/{repo}@{branch}")
+    logger.info("Fetching file tree for %s/%s@%s", owner, repo, branch)
     
     api_url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
     
@@ -186,9 +189,9 @@ def select_sdk_files(tree: list[dict], language: str | None = None, max_files: i
     for _, filepath, _ in candidates[:max_files]:
         selected.append(filepath)
     
-    print(f"[INFO] Selected {len(selected)} files for parsing")
+    logger.info("Selected %d files for parsing", len(selected))
     for f in selected:
-        print(f"  - {f}")
+        logger.info("  - %s", f)
     
     return selected
 
@@ -306,7 +309,7 @@ File: {source}
             }
             
         except json.JSONDecodeError as e:
-            print(f"[ERROR] JSON parse failed (attempt {attempt + 1}): {e}")
+            logger.error("JSON parse failed (attempt %d): %s", attempt + 1, e)
             if attempt < max_retries - 1:
                 time.sleep(2 ** attempt)
             else:
@@ -315,7 +318,7 @@ File: {source}
             if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
                 if attempt < max_retries - 1:
                     wait_time = 2 ** (attempt + 2)
-                    print(f"[WARN] Rate limited, waiting {wait_time}s...")
+                    logger.warning("Rate limited, waiting %ds...", wait_time)
                     time.sleep(wait_time)
                 else:
                     raise
@@ -363,7 +366,7 @@ def ingest_github(url: str, language: str | None = None, max_files: int = 10) ->
     # Parse each file
     results = []
     for filepath in files:
-        print(f"[INFO] Parsing: {filepath}")
+        logger.info("Parsing: %s", filepath)
         
         try:
             content = fetch_github_file(owner, repo, branch, filepath)
@@ -372,13 +375,13 @@ def ingest_github(url: str, language: str | None = None, max_files: int = 10) ->
             result = parse_sdk_with_gemini(filepath, content, lang)
             results.append(result)
             
-            print(f"  → Found {len(result.get('tools', []))} tools")
+            logger.info("  → Found %d tools", len(result.get('tools', [])))
             
             # Small delay between API calls
             time.sleep(1)
             
         except Exception as e:
-            print(f"[WARN] Failed to parse {filepath}: {e}")
+            logger.warning("Failed to parse %s: %s", filepath, e)
     
     return merge_results(results, url)
 
@@ -393,7 +396,7 @@ def ingest_file(filepath: str) -> dict[str, Any]:
     content = path.read_text(encoding="utf-8")
     language = detect_language(str(path)) or "python"
     
-    print(f"[INFO] Parsing local file: {filepath} ({language})")
+    logger.info("Parsing local file: %s (%s)", filepath, language)
     
     result = parse_sdk_with_gemini(str(path), content, language)
     
@@ -427,12 +430,12 @@ def ingest_directory(dirpath: str, language: str | None = None, max_files: int =
     files.sort(key=lambda x: -x[0])
     files = [f[1] for f in files[:max_files]]
     
-    print(f"[INFO] Selected {len(files)} files from {dirpath}")
+    logger.info("Selected %d files from %s", len(files), dirpath)
     
     # Parse each file
     results = []
     for filepath in files:
-        print(f"[INFO] Parsing: {filepath}")
+        logger.info("Parsing: %s", filepath)
         
         try:
             content = filepath.read_text(encoding="utf-8")
@@ -441,11 +444,11 @@ def ingest_directory(dirpath: str, language: str | None = None, max_files: int =
             result = parse_sdk_with_gemini(str(filepath), content, lang)
             results.append(result)
             
-            print(f"  → Found {len(result.get('tools', []))} tools")
+            logger.info("  → Found %d tools", len(result.get('tools', [])))
             time.sleep(1)
             
         except Exception as e:
-            print(f"[WARN] Failed to parse {filepath}: {e}")
+            logger.warning("Failed to parse %s: %s", filepath, e)
     
     return merge_results(results, str(path.absolute()))
 
@@ -458,12 +461,6 @@ def ingest(
     output_path: str | None = None,
 ) -> dict[str, Any]:
     """Main ingestion function."""
-    
-    # Determine output path
-    if output_path is None:
-        script_dir = Path(__file__).parent
-        output_path = str(script_dir / "sdk_tool_definitions.json")
-    
     # Parse based on source type
     if source_type == "github":
         result = ingest_github(source, language, max_files)
@@ -474,22 +471,16 @@ def ingest(
     else:
         raise ValueError(f"Unknown source type: {source_type}")
     
-    # Write output
-    print(f"[INFO] Writing output to: {output_path}")
-    Path(output_path).write_text(
-        json.dumps(result, indent=2, ensure_ascii=False),
-        encoding="utf-8"
-    )
+    # Write output if path given
+    if output_path:
+        logger.info("Writing output to: %s", output_path)
+        Path(output_path).write_text(
+            json.dumps(result, indent=2, ensure_ascii=False),
+            encoding="utf-8"
+        )
     
-    # Summary
-    print(f"\n{'='*50}")
-    print(f"SDK Ingestion Complete!")
-    print(f"{'='*50}")
-    print(f"Source: {result['source']}")
-    print(f"Parser: {result['parser']}")
-    print(f"SDK: {result['api_info'].get('title', 'Unknown')}")
-    print(f"Tools: {len(result['tools'])}")
-    print(f"Output: {output_path}")
+    logger.info("SDK Ingestion complete — SDK: %s, Tools: %d",
+                result['api_info'].get('title', 'Unknown'), len(result['tools']))
     
     return result
 

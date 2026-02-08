@@ -288,8 +288,12 @@ def _build_server_prompt(
 def _build_test_prompt(spec: APISpec, tools: list[ToolDefinition]) -> str:
     """Build the prompt for generating test_server.py."""
     tool_names = [t.name for t in tools]
+    tool_test_list = "\n".join(
+        f"   - test_{t.name}() — call tool \"{t.name}\" with sample args and verify it returns a string"
+        for t in tools
+    )
     return textwrap.dedent(f"""\
-        Generate a test file for an MCP server.
+        Generate a COMPLETE test file for an MCP server with ALL {len(tools)} tools.
 
         API: {spec.title} v{spec.version}
         Tools ({len(tools)}): {tool_names}
@@ -303,11 +307,15 @@ def _build_test_prompt(spec: APISpec, tools: list[ToolDefinition]) -> str:
         await client.close()
         ```
 
-        Include:
-        1. test_list_tools() — verify {len(tools)} tools registered
+        You MUST include ALL of these test functions:
+        1. test_list_tools() — verify exactly {len(tools)} tools registered
         2. test_tool_schemas() — each tool has name + description
-        3. main() that runs tests
+{tool_test_list}
+        3. main() that runs ALL tests
         4. if __name__ == "__main__" block
+
+        IMPORTANT: Generate a test function for EVERY tool listed above.
+        Do NOT skip any. Total expected: {2 + len(tools)} test functions.
 
         Return ONLY ```python code.
     """)
@@ -391,44 +399,68 @@ def generate(
         logger.info("Server: %s | Prefix: %s | Tools: %d", name, env_prefix, len(tools))
         logger.info("Provider: Featherless (DeepSeek-V3-0324)")
 
-        # ── Step 1: Generate server.py ───────────────────────────────────
+        # ── Step 1: Generate server.py (with retry loop) ────────────────
         logger.info("Step 1: Generating complete server.py via LLM...")
         prompt = _build_server_prompt(spec, tools, name, env_prefix)
-        raw = _call_llm(prompt, system_instruction=_SYSTEM_PROMPT, max_tokens=16384)
-        server_code = _extract_code(raw)
-
-        # ── Step 2: Validate ─────────────────────────────────────────────
-        logger.info("Step 2: Validating generated code...")
-        valid, err = _validate_python(server_code)
-        tool_count_in_code = _count_tools_in_code(server_code)
         expected = len(tools)
+        max_attempts = 3
+        server_code = ""
 
-        issues: list[str] = []
-        if not valid:
-            issues.append(f"Syntax error: {err}")
-        if tool_count_in_code < expected:
-            issues.append(
-                f"Expected {expected} @tool functions, found {tool_count_in_code}"
-            )
-
-        if issues:
-            issue_str = "; ".join(issues)
-            logger.warning("  Validation failed: %s — asking LLM to fix...", issue_str)
-            server_code = _fix_code_with_llm(server_code, issue_str, expected)
-            valid2, err2 = _validate_python(server_code)
-            if not valid2:
-                logger.error("  Fix attempt failed: %s", err2)
+        for attempt in range(1, max_attempts + 1):
+            if attempt == 1:
+                raw = _call_llm(prompt, system_instruction=_SYSTEM_PROMPT, max_tokens=16384)
+                server_code = _extract_code(raw)
             else:
-                new_count = _count_tools_in_code(server_code)
-                logger.info("  Fix applied — %d tools, valid=%s", new_count, valid2)
-        else:
-            logger.info("  ✓ Valid Python with %d/%d tools", tool_count_in_code, expected)
+                logger.info("  Retry %d/%d — asking LLM to fix...", attempt, max_attempts)
+                server_code = _fix_code_with_llm(server_code, issue_str, expected)
 
-        # ── Step 3: Generate test file ───────────────────────────────────
-        logger.info("Step 3: Generating test_server.py via LLM...")
+            valid, err = _validate_python(server_code)
+            tool_count_in_code = _count_tools_in_code(server_code)
+
+            issues: list[str] = []
+            if not valid:
+                issues.append(f"Syntax error: {err}")
+            if tool_count_in_code < expected:
+                issues.append(
+                    f"Expected {expected} @tool functions, found {tool_count_in_code}"
+                )
+
+            if not issues:
+                logger.info("  ✓ Valid Python with %d/%d tools (attempt %d)", tool_count_in_code, expected, attempt)
+                break
+
+            issue_str = "; ".join(issues)
+            logger.warning("  Attempt %d validation failed: %s", attempt, issue_str)
+
+            if attempt == max_attempts:
+                logger.error("  All %d attempts exhausted. Best: %d/%d tools", max_attempts, tool_count_in_code, expected)
+
+        # ── Step 2: Generate test file (with retry) ──────────────────────
+        logger.info("Step 2: Generating test_server.py via LLM...")
         test_prompt = _build_test_prompt(spec, tools)
         raw_test = _call_llm(test_prompt, system_instruction=_SYSTEM_PROMPT, max_tokens=8192)
         test_code = _extract_code(raw_test)
+
+        # Validate test has enough test functions
+        test_func_count = len(re.findall(r"(?:async )?def test_", test_code))
+        # We expect at minimum: test_list_tools + test_tool_schemas + 1 per tool
+        min_tests = 2 + expected
+        if test_func_count < min_tests:
+            logger.warning("  Test file has %d tests, expected >= %d — regenerating...", test_func_count, min_tests)
+            enhanced_test_prompt = _build_test_prompt(spec, tools) + (
+                f"\n\nIMPORTANT: You MUST generate at least {min_tests} test functions:\n"
+                f"- test_list_tools()\n- test_tool_schemas()\n"
+                + "\n".join(f"- test_{t.name}()" for t in tools)
+                + "\nGenerate ALL of them. Do NOT skip any."
+            )
+            raw_test2 = _call_llm(enhanced_test_prompt, system_instruction=_SYSTEM_PROMPT, max_tokens=16384)
+            test_code2 = _extract_code(raw_test2)
+            new_count = len(re.findall(r"(?:async )?def test_", test_code2))
+            if new_count > test_func_count:
+                test_code = test_code2
+                logger.info("  Retry improved: %d → %d test functions", test_func_count, new_count)
+            else:
+                logger.info("  Retry did not improve (%d tests), keeping original", new_count)
 
         # ── Step 4: Write config files ───────────────────────────────────
         logger.info("Step 4: Writing config files...")

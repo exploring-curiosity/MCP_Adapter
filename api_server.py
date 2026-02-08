@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import pickle
+import tempfile
 import uuid
 from pathlib import Path
 from typing import Any
@@ -16,16 +17,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from mcp_adapter.ingest import ingest
 from mcp_adapter.mine import mine_tools
-from mcp_adapter.models import SafetyLevel, ToolDefinition
+from mcp_adapter.models import (
+    APISpec, AuthScheme, Endpoint, HttpMethod, ParamLocation,
+    ParamSchema, SafetyLevel, ToolDefinition, ToolParam,
+)
 from mcp_adapter.safety import SafetyPolicy, apply_safety
 from mcp_adapter.agentic_codegen import generate as agentic_generate
 from mcp_adapter.deploy import deploy as deploy_to_github
+from mcp_adapter.swagger_ingest import ingest as swagger_ingest
+from mcp_adapter.sdk_ingest import ingest as sdk_ingest
+from mcp_adapter.discover import classify_tools, apply_rules
 from mcp_adapter.logger import setup_logging
 
 setup_logging(verbose=False)
@@ -77,34 +84,205 @@ class DeployRequest(BaseModel):
     session_id: str
     github_org: str | None = None
 
+class DiscoverRequest(BaseModel):
+    session_id: str
+    policy: str = "moderate"  # conservative, moderate, permissive
+    use_gemini: bool = False
+
+class DiscoverConfirmRequest(BaseModel):
+    session_id: str
+    allowed_tools: list[str]  # tool names to carry forward
+
+
+# ── Raw tool → canonical model converters ─────────────────────────────────
+
+def _raw_tools_to_canonical(raw_tools: list[dict], api_info: dict) -> tuple[APISpec, list[ToolDefinition]]:
+    """Convert raw tool dicts (from swagger_ingest/sdk_ingest) into canonical APISpec + ToolDefinition."""
+    endpoints: list[Endpoint] = []
+    tools: list[ToolDefinition] = []
+
+    for rt in raw_tools:
+        method_str = rt.get("method", "GET").upper()
+        if method_str == "FUNCTION":
+            method_str = "POST"
+        try:
+            method = HttpMethod(method_str)
+        except ValueError:
+            method = HttpMethod.GET
+
+        path = rt.get("path", "/")
+
+        # Build params
+        params: list[ParamSchema] = []
+        tool_params: list[ToolParam] = []
+        for p in rt.get("params", []):
+            loc_str = p.get("location", "query")
+            try:
+                loc = ParamLocation(loc_str)
+            except ValueError:
+                loc = ParamLocation.QUERY if loc_str != "body" else ParamLocation.BODY
+            params.append(ParamSchema(
+                name=p.get("name", ""),
+                location=loc,
+                description=p.get("description", ""),
+                required=p.get("required", False),
+                schema_type=p.get("type", p.get("schema_type", "string")),
+            ))
+            tool_params.append(ToolParam(
+                name=p.get("name", ""),
+                description=p.get("description", ""),
+                json_type=p.get("type", p.get("json_type", "string")),
+                required=p.get("required", False),
+            ))
+
+        ep = Endpoint(
+            method=method,
+            path=path,
+            operation_id=rt.get("name", ""),
+            summary=rt.get("description", ""),
+            description=rt.get("description", ""),
+            tags=rt.get("tags", []),
+            parameters=params,
+            deprecated=rt.get("deprecated", False),
+        )
+        endpoints.append(ep)
+
+        tools.append(ToolDefinition(
+            name=rt.get("name", ""),
+            description=rt.get("description", ""),
+            endpoints=[ep],
+            params=tool_params,
+            tags=rt.get("tags", []),
+        ))
+
+    spec = APISpec(
+        title=api_info.get("title", "Untitled API"),
+        version=api_info.get("version", ""),
+        description=api_info.get("description", ""),
+        base_url=api_info.get("base_url", ""),
+        endpoints=endpoints,
+        tags=sorted({t for ep in endpoints for tag in ep.tags for t in ([tag] if tag else [])}),
+    )
+    return spec, tools
+
+
+def _serialize_tools(tools: list[ToolDefinition]) -> list[dict]:
+    """Serialize canonical ToolDefinitions for JSON response."""
+    return [
+        {
+            "name": t.name,
+            "description": t.description,
+            "safety": t.safety.value,
+            "params": [
+                {"name": p.name, "description": p.description, "json_type": p.json_type, "required": p.required}
+                for p in t.params
+            ],
+            "endpoints": [{"method": e.method.value, "path": e.path} for e in t.endpoints],
+            "tags": t.tags,
+        }
+        for t in tools
+    ]
+
+
+def _serialize_endpoints(endpoints: list[Endpoint]) -> list[dict]:
+    """Serialize canonical Endpoints for JSON response."""
+    return [
+        {
+            "method": ep.method.value,
+            "path": ep.path,
+            "operation_id": ep.operation_id,
+            "summary": ep.summary,
+            "description": ep.description,
+            "tags": ep.tags,
+            "params": [
+                {"name": p.name, "location": p.location.value, "description": p.description,
+                 "required": p.required, "schema_type": p.schema_type}
+                for p in ep.parameters
+            ],
+            "deprecated": ep.deprecated,
+        }
+        for ep in endpoints
+    ]
+
 
 # ── Endpoints ─────────────────────────────────────────────────────────────
 
 @app.post("/api/ingest")
 async def api_ingest(req: IngestRequest):
-    """Stage 1: Ingest an API spec and return parsed endpoints."""
+    """Stage 1: Ingest an API spec and return parsed endpoints.
+
+    Supports source_type: openapi, swagger, sdk, docs
+    """
+    session_id = str(uuid.uuid4())[:8]
+    raw_tools: list[dict] = []
+
     try:
-        api_spec = ingest(req.source)
+        if req.source_type in ("openapi", "postman"):
+            # ── Existing pipeline: ingest → mine → safety ──
+            api_spec = ingest(req.source)
+            tools = mine_tools(api_spec)
+            tools = apply_safety(tools)
+            # Build raw_tools for discover step
+            raw_tools = [
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "method": t.endpoints[0].method.value if t.endpoints else "GET",
+                    "path": t.endpoints[0].path if t.endpoints else "/",
+                    "params": [{"name": p.name, "type": p.json_type, "required": p.required,
+                                "location": "body", "description": p.description} for p in t.params],
+                    "tags": t.tags,
+                }
+                for t in tools
+            ]
+
+        elif req.source_type == "swagger":
+            # ── Prance-based parsing (better $ref resolution) ──
+            result = swagger_ingest(source=req.source, use_gemini=False)
+            raw_tools = result.get("tools", [])
+            api_spec, tools = _raw_tools_to_canonical(raw_tools, result.get("api_info", {}))
+            tools = apply_safety(tools)
+
+        elif req.source_type == "sdk":
+            # ── SDK ingestion (GitHub repo or local) ──
+            if req.source.startswith("http") and "github.com" in req.source:
+                result = sdk_ingest(source=req.source, source_type="github")
+            else:
+                result = sdk_ingest(source=req.source, source_type="file")
+            raw_tools = result.get("tools", [])
+            api_spec, tools = _raw_tools_to_canonical(raw_tools, result.get("api_info", {}))
+            tools = apply_safety(tools)
+
+        elif req.source_type == "docs":
+            # ── Gemini-based parsing for non-standard docs ──
+            result = swagger_ingest(source=req.source, use_gemini=True)
+            raw_tools = result.get("tools", [])
+            api_spec, tools = _raw_tools_to_canonical(raw_tools, result.get("api_info", {}))
+            tools = apply_safety(tools)
+
+        else:
+            raise ValueError(f"Unknown source_type: {req.source_type}")
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Ingestion failed: {e}")
 
-    session_id = str(uuid.uuid4())[:8]
-
-    # Stage 2: Mine tools immediately
-    tools = mine_tools(api_spec)
-
-    # Stage 3: Apply default safety
-    tools = apply_safety(tools)
+    # Run rule-based classification automatically
+    classifications = classify_tools(raw_tools, policy="moderate", use_gemini=False)
 
     _save_session(session_id, {
         "spec": api_spec,
         "tools": tools,
+        "raw_tools": raw_tools,
+        "classifications": classifications,
         "generated": None,
         "output_dir": None,
     })
 
     return {
         "session_id": session_id,
+        "source_type": req.source_type,
         "spec": {
             "title": api_spec.title,
             "version": api_spec.version,
@@ -113,50 +291,9 @@ async def api_ingest(req: IngestRequest):
             "tags": api_spec.tags,
             "auth_schemes": [s.model_dump() for s in api_spec.auth_schemes],
         },
-        "endpoints": [
-            {
-                "method": ep.method.value,
-                "path": ep.path,
-                "operation_id": ep.operation_id,
-                "summary": ep.summary,
-                "description": ep.description,
-                "tags": ep.tags,
-                "params": [
-                    {
-                        "name": p.name,
-                        "location": p.location.value,
-                        "description": p.description,
-                        "required": p.required,
-                        "schema_type": p.schema_type,
-                    }
-                    for p in ep.parameters
-                ],
-                "deprecated": ep.deprecated,
-            }
-            for ep in api_spec.endpoints
-        ],
-        "tools": [
-            {
-                "name": t.name,
-                "description": t.description,
-                "safety": t.safety.value,
-                "params": [
-                    {
-                        "name": p.name,
-                        "description": p.description,
-                        "json_type": p.json_type,
-                        "required": p.required,
-                    }
-                    for p in t.params
-                ],
-                "endpoints": [
-                    {"method": e.method.value, "path": e.path}
-                    for e in t.endpoints
-                ],
-                "tags": t.tags,
-            }
-            for t in tools
-        ],
+        "endpoints": _serialize_endpoints(api_spec.endpoints),
+        "tools": _serialize_tools(tools),
+        "classifications": classifications,
     }
 
 
@@ -179,50 +316,131 @@ async def api_session(session_id: str):
             "base_url": api_spec.base_url,
             "tags": api_spec.tags,
         },
-        "endpoints": [
-            {
-                "method": ep.method.value,
-                "path": ep.path,
-                "summary": ep.summary,
-                "description": ep.description,
-                "tags": ep.tags,
-                "params": [
-                    {
-                        "name": p.name,
-                        "location": p.location.value,
-                        "description": p.description,
-                        "required": p.required,
-                        "schema_type": p.schema_type,
-                    }
-                    for p in ep.parameters
-                ],
-            }
-            for ep in api_spec.endpoints
-        ],
-        "tools": [
-            {
-                "name": t.name,
-                "description": t.description,
-                "safety": t.safety.value,
-                "params": [
-                    {
-                        "name": p.name,
-                        "description": p.description,
-                        "json_type": p.json_type,
-                        "required": p.required,
-                    }
-                    for p in t.params
-                ],
-                "endpoints": [
-                    {"method": e.method.value, "path": e.path}
-                    for e in t.endpoints
-                ],
-                "tags": t.tags,
-            }
-            for t in tools
-        ],
+        "endpoints": _serialize_endpoints(api_spec.endpoints),
+        "tools": _serialize_tools(tools),
+        "classifications": sess.get("classifications", {}),
         "has_generated": sess["generated"] is not None,
     }
+
+
+@app.post("/api/discover")
+async def api_discover(req: DiscoverRequest):
+    """Stage 2: Classify tools for MCP exposure."""
+    sess = _load_session(req.session_id)
+    if not sess:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    raw_tools = sess.get("raw_tools", [])
+    if not raw_tools:
+        raise HTTPException(status_code=400, detail="No raw tools to classify. Run ingest first.")
+
+    try:
+        classifications = classify_tools(
+            raw_tools,
+            policy=req.policy,
+            use_gemini=req.use_gemini,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Classification failed: {e}")
+
+    sess["classifications"] = classifications
+    _save_session(req.session_id, sess)
+
+    return classifications
+
+
+@app.post("/api/ingest/upload")
+async def api_ingest_upload(
+    file: UploadFile = File(...),
+    source_type: str = Form("openapi"),
+):
+    """Ingest from an uploaded YAML/JSON file."""
+    content = await file.read()
+    text = content.decode("utf-8")
+
+    suffix = ".yaml" if (file.filename or "").endswith((".yaml", ".yml")) else ".json"
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False, encoding="utf-8")
+    try:
+        tmp.write(text)
+        tmp.close()
+
+        session_id = str(uuid.uuid4())[:8]
+        raw_tools: list[dict] = []
+
+        if source_type in ("openapi", "postman"):
+            api_spec = ingest(tmp.name)
+            tools = mine_tools(api_spec)
+            tools = apply_safety(tools)
+            raw_tools = [
+                {
+                    "name": t.name, "description": t.description,
+                    "method": t.endpoints[0].method.value if t.endpoints else "GET",
+                    "path": t.endpoints[0].path if t.endpoints else "/",
+                    "params": [{"name": p.name, "type": p.json_type, "required": p.required,
+                                "location": "body", "description": p.description} for p in t.params],
+                    "tags": t.tags,
+                }
+                for t in tools
+            ]
+        elif source_type == "swagger":
+            result = swagger_ingest(source=tmp.name, use_gemini=False)
+            raw_tools = result.get("tools", [])
+            api_spec, tools = _raw_tools_to_canonical(raw_tools, result.get("api_info", {}))
+            tools = apply_safety(tools)
+        elif source_type == "docs":
+            result = swagger_ingest(source=tmp.name, use_gemini=True)
+            raw_tools = result.get("tools", [])
+            api_spec, tools = _raw_tools_to_canonical(raw_tools, result.get("api_info", {}))
+            tools = apply_safety(tools)
+        else:
+            raise ValueError(f"Unknown source_type: {source_type}")
+
+        classifications = classify_tools(raw_tools, policy="moderate", use_gemini=False)
+
+        _save_session(session_id, {
+            "spec": api_spec, "tools": tools, "raw_tools": raw_tools,
+            "classifications": classifications, "generated": None, "output_dir": None,
+        })
+
+        return {
+            "session_id": session_id,
+            "source_type": source_type,
+            "spec": {
+                "title": api_spec.title, "version": api_spec.version,
+                "description": api_spec.description, "base_url": api_spec.base_url,
+                "tags": api_spec.tags,
+                "auth_schemes": [s.model_dump() for s in api_spec.auth_schemes],
+            },
+            "endpoints": _serialize_endpoints(api_spec.endpoints),
+            "tools": _serialize_tools(tools),
+            "classifications": classifications,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Ingestion failed: {e}")
+    finally:
+        os.unlink(tmp.name)
+
+
+@app.post("/api/discover/confirm")
+async def api_discover_confirm(req: DiscoverConfirmRequest):
+    """Confirm discovery: filter session tools to only the allowed ones."""
+    sess = _load_session(req.session_id)
+    if not sess:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    allowed_set = set(req.allowed_tools)
+    sess["tools"] = [t for t in sess["tools"] if t.name in allowed_set]
+    sess["raw_tools"] = [rt for rt in sess.get("raw_tools", []) if rt.get("name") in allowed_set]
+
+    # Also filter spec endpoints
+    spec = sess["spec"]
+    spec.endpoints = [ep for ep in spec.endpoints if ep.operation_id in allowed_set]
+    sess["spec"] = spec
+
+    _save_session(req.session_id, sess)
+    return {"status": "ok", "allowed_count": len(sess["tools"])}
 
 
 @app.post("/api/policy")
