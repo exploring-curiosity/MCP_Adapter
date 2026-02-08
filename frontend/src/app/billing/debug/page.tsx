@@ -33,11 +33,11 @@ export default function BillingDebugPage() {
             <h1 className="text-2xl font-bold mb-6">FlowGlad Configuration Debug</h1>
 
             {/* Errors */}
-            {errors?.length > 0 && (
+            {(errors?.length ?? 0) > 0 && (
                 <div className="mb-6 p-4 bg-red-500/20 border border-red-500 rounded-lg">
                     <h2 className="text-lg font-semibold text-red-400 mb-2">Errors</h2>
                     <ul className="list-disc list-inside">
-                        {errors.map((err, i) => (
+                        {errors?.map((err, i) => (
                             <li key={i} className="text-red-300">{err.message || JSON.stringify(err)}</li>
                         ))}
                     </ul>
