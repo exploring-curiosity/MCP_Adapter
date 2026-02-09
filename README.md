@@ -422,9 +422,8 @@ Dedalus/
 
 ## Team
 
-```
-Hardik Amarwani
-Sudharshan Ramesh
-Neel Gajiwala
-Harshini Kumar
+- Hardik Amarwani (hardikamarwani@gmail.com)
+- Sudharshan Ramesh
+- Neel Gajiwala
+- Harshini Kumar
 ```
