@@ -419,3 +419,12 @@ Dedalus/
 │   └── app.py               # Simple math API for testing
 └── output/                  # Generated MCP servers
 ```
+
+## Team
+
+```
+Hardik Amarwani
+Sudharshan Ramesh
+Neel Gajiwala
+Harshini Kumar
+```
