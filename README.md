@@ -425,5 +425,5 @@ Dedalus/
 - Hardik Amarwani (hardikamarwani@gmail.com)
 - Sudharshan Ramesh
 - Neel Gajiwala ( ng3373@nyu.edu )
-- Harshini Kumar
+- Harshini Vijaya Kumar (hv2201@nyu.edu)
 ```
