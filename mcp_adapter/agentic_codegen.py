@@ -410,9 +410,6 @@ def generate(
             if attempt == 1:
                 raw = _call_llm(prompt, system_instruction=_SYSTEM_PROMPT, max_tokens=16384)
                 server_code = _extract_code(raw)
-            else:
-                logger.info("  Retry %d/%d — asking LLM to fix...", attempt, max_attempts)
-                server_code = _fix_code_with_llm(server_code, issue_str, expected)
 
             valid, err = _validate_python(server_code)
             tool_count_in_code = _count_tools_in_code(server_code)
@@ -425,15 +422,19 @@ def generate(
                     f"Expected {expected} @tool functions, found {tool_count_in_code}"
                 )
 
+            issue_str = "; ".join(issues)
+
             if not issues:
                 logger.info("  ✓ Valid Python with %d/%d tools (attempt %d)", tool_count_in_code, expected, attempt)
                 break
 
-            issue_str = "; ".join(issues)
             logger.warning("  Attempt %d validation failed: %s", attempt, issue_str)
 
             if attempt == max_attempts:
                 logger.error("  All %d attempts exhausted. Best: %d/%d tools", max_attempts, tool_count_in_code, expected)
+
+            logger.info("  Retry %d/%d — asking LLM to fix...", attempt, max_attempts)
+            server_code = _fix_code_with_llm(server_code, issue_str, expected)
 
         # ── Step 2: Generate test file (with retry) ──────────────────────
         logger.info("Step 2: Generating test_server.py via LLM...")
