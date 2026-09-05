@@ -292,7 +292,7 @@ async def api_ingest(req: IngestRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Ingestion failed: {e}")
+        raise HTTPException(status_code=400, detail=f"Ingestion failed: {e}") from e
 
     # Run rule-based classification automatically
     classifications = classify_tools(raw_tools, policy="moderate", use_gemini=False)
