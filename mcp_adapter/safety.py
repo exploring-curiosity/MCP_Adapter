@@ -117,6 +117,7 @@ def apply_safety(
         blocked: list[str] = []
 
         for tool in tools:
+            tool = tool.model_copy()
             # 1. Re-classify based on keywords
             old_safety = tool.safety
             tool.safety = reclassify_safety(tool)
